@@ -1,0 +1,4 @@
+{
+  "commands.meridian_humanoid_taunts.say.success": "%s 说了一句",
+  "commands.meridian_humanoid_taunts.say.silent": "%s 没有垃圾话台词"
+}

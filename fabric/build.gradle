@@ -1,0 +1,139 @@
+plugins { id 'fabric-loom' }
+
+description = '类人受击垃圾话：Damage 观察方、聊天与头顶气泡、调试命令。'
+
+repositories {
+    maven { url = 'https://maven.fabricmc.net/' }
+}
+
+def sibling = { String key -> rootProject.file(rootProject.siblingArtifacts[key]) }
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.20.1'
+    mappings 'net.fabricmc:yarn:1.20.1+build.10:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.16.10'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.92.3+1.20.1'
+
+    implementation project(':server')
+    include project(':server')
+    include implementation('org.tomlj:tomlj:1.1.1')
+    include 'org.antlr:antlr4-runtime:4.11.1'
+    // 物种来自 Threatening，受击事实来自 Damage 观察事件；两者都是必装模组，运行时由完整装配提供。
+    modCompileOnly files(sibling('damageFabric'))
+    compileOnly files(sibling('damageServer'), sibling('frameworkServer'), sibling('humanoidServer'))
+    compileOnly 'com.google.protobuf:protobuf-java:4.36.2'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+test { useJUnit() }
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+    // 台词数据只在 shared 维护一份，随正式 JAR 根目录发布。
+    from(project(':shared').sourceSets.main.resources)
+}
+
+// Loom 只按坐标复用 modprocessing 里的嵌套 JAR，SNAPSHOT 坐标不变时会把旧 server JAR 打进发布 JAR；
+// 每次打发布 JAR 前清掉该缓存，让 include 的 JAR 按当前产物重新生成。
+def clearNestedJarCache = tasks.register('clearNestedJarCache', Delete) {
+    delete layout.buildDirectory.dir('loom-cache/temp/modprocessing')
+}
+tasks.named('remapJar') {
+    dependsOn clearNestedJarCache
+}
+
+// 开发运行沿用 Meridian 统一完整装配；Framework 与 Protobuf 在安装 JAR 中是嵌套库，开发时显式补齐。
+apply from: '../../Kizuna-Meridian-Mod-Framework/scripts/full-assembly.gradle'
+dependencies {
+    localRuntime files(sibling('frameworkServer'))
+    localRuntime 'com.google.protobuf:protobuf-java:4.36.2'
+    localRuntime files('../../Kizuna-Meridian-Human-Addon/client/build/libs/' +
+            'kizuna-meridian-human-addon-client-0.1.0-SNAPSHOT.jar')
+}
+
+loom {
+    mods {
+        meridian_humanoid_taunts { sourceSet sourceSets.main }
+    }
+    runs {
+        client { runDir 'build/playtest' }
+        server { runDir 'build/server' }
+    }
+}
+
+sourceSets {
+    gametest {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+    clientTest {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+}
+
+loom {
+    mods {
+        meridian_humanoid_taunts_test { sourceSet sourceSets.gametest }
+        meridian_humanoid_taunts_client_test { sourceSet sourceSets.clientTest }
+    }
+    runs {
+        gametest {
+            server()
+            name '类人垃圾话 GameTest'
+            source sourceSets.gametest
+            runDir 'build/gametest'
+            vmArg '-Dfabric-api.gametest'
+            vmArg '-Dfabric-api.gametest.report-file=build/gametest-results.xml'
+        }
+        clientTest {
+            client()
+            name '类人垃圾话气泡客户端测试'
+            source sourceSets.clientTest
+            runDir 'build/clienttest'
+            programArgs '--quickPlaySingleplayer', 'taunts-bubble-test', '--width', '1280', '--height', '960'
+        }
+    }
+}
+
+afterEvaluate {
+    tasks.named('runGametest') {
+        doFirst {
+            // 平坦世界供客户端测试复用，固定端口与视距避免占用用户环境。
+            def runDirectory = file('build/gametest')
+            runDirectory.mkdirs()
+            new File(runDirectory, 'eula.txt').text = 'eula=true\n'
+            new File(runDirectory, 'server.properties').text = '''online-mode=false
+server-ip=127.0.0.1
+server-port=0
+level-type=flat
+generate-structures=false
+view-distance=2
+simulation-distance=2
+'''
+        }
+    }
+}
+
+tasks.register('prepareClientTestWorld', Copy) {
+    from layout.buildDirectory.dir('gametest/world')
+    into layout.buildDirectory.dir('clienttest/saves/taunts-bubble-test')
+    exclude 'session.lock'
+}
+tasks.named('runClientTest') {
+    dependsOn tasks.named('prepareClientTestWorld')
+    def report = layout.buildDirectory.file('clienttest-results.txt')
+    def options = layout.buildDirectory.file('clienttest/options.txt')
+    doFirst {
+        report.get().asFile.text = 'success=false\n'
+        // 以简体中文启动，聊天里的实体名按中文语言文件解析；3465 是 1.20.1 的数据版本，免得选项走升级。
+        options.get().asFile.parentFile.mkdirs()
+        options.get().asFile.text = 'version:3465\nlang:zh_cn\n'
+    }
+    doLast {
+        if (!report.get().asFile.text.startsWith('success=true')) {
+            throw new GradleException("气泡客户端验收失败：${report.get().asFile}")
+        }
+    }
+}

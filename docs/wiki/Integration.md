@@ -1,0 +1,34 @@
+# 整合接口
+
+本模组只使用 Threatening 与 Damage 已有的公开入口，不改这两个仓库，也不复制它们的代码。
+
+## Threatening 物种
+
+`HumanoidSpecies.fromEntityId(String)`：说话者的实体 ID 必须被 Threatening 认领为类人身体宿主（七个内置物种，
+或其他附属经数据驱动注册点登记的物种），并且当前台词表里有这个 ID，才会开口。
+登记了物种但台词表里没有的实体（例如训练假人）不说话；台词表里有但 Threatening 没认领的实体也不说话。
+
+## Damage 观察事件
+
+`VanillaDamageFabric.registerDamageObserver` 在身体事务提交后通知只读事实。本模组用到其中三项：
+
+- `target()`：受击者，即说话者；
+- `attacker()`：伤害源的生物攻击者，可能为空；弹射物算射手；
+- `result().body().getVitality().getDead()`：提交后的身体是否死亡，用来跳过致死一击。
+
+观察事件只对有身体的目标触发，所以「有身体的生人」这一条件由 Damage 保证；原版 `damage()` 被取消、
+没有进入身体事务的伤害不会触发。观察方抛出的异常由 Damage 隔离，不改变结算。
+
+## 气泡网络包
+
+S2C 通道 `meridian_humanoid_taunts:bubble`，载荷依次为：
+
+| 字段 | 编码 | 含义 |
+| --- | --- | --- |
+| 实体 ID | VarInt | 说话者的实体网络 ID |
+| 台词 | `PacketByteBuf.writeText` | 已替换攻击者名字的文本组件，可翻译部分由客户端解析 |
+
+服务端只向能接收此通道（装了本模组客户端）的玩家发送。客户端收到后在渲染线程登记气泡，
+在 `WorldRenderEvents.AFTER_ENTITIES` 里按原版名牌的坐标系绘制，断开连接时清空。
+气泡底色用 `RenderLayer.getTextBackground()` 按横条拼出圆角框与尾巴，深度比字形远 0.01 个字体像素，
+与原版文字底色相同，所以文字始终压在底色上、气泡仍会被方块挡住。

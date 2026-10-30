@@ -1,0 +1,12 @@
+# 类人垃圾话：Threatening 认领的生人受到有生物攻击者的伤害时，对攻击者说一句。
+
+# 台词文件 data/meridian_humanoid_taunts/taunts/<language>.json；目前只有 zh_cn。
+language = "zh_cn"
+# 同一实体两句之间至少间隔的秒数，0 表示每次受击都说。
+cooldown_seconds = 6.0
+
+[display]
+# 发给 16 格内玩家的浅灰色聊天行「<说话者> 台词」。
+chat = true
+# 说话者头顶 4 秒的白底黑字气泡；需要客户端也装本模组。
+bubble = true

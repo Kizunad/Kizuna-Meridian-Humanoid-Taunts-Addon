@@ -1,0 +1,17 @@
+description = '类人垃圾话台词表、发言记忆与配置的纯 Java 规则。'
+
+dependencies {
+    // Gson 由 Minecraft 1.20.1 运行时提供，那里是 2.10，不能用 2.10.1 新增的 API；TOML 库随 Fabric JAR 嵌套。
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+    implementation 'org.tomlj:tomlj:1.1.1'
+    testImplementation project(':shared')
+    // 七种生人的实体 ID 以 Threatening 内置物种为准。
+    testImplementation files(rootProject.file(siblingArtifacts.frameworkServer))
+    testImplementation files(rootProject.file(siblingArtifacts.humanoidServer))
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+test {
+    useJUnit()
+}

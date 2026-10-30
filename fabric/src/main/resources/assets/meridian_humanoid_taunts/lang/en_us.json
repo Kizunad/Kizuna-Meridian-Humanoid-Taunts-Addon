@@ -1,0 +1,4 @@
+{
+  "commands.meridian_humanoid_taunts.say.success": "%s taunted",
+  "commands.meridian_humanoid_taunts.say.silent": "%s has no taunt lines"
+}
