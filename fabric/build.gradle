@@ -6,23 +6,26 @@ repositories {
     maven { url = 'https://maven.fabricmc.net/' }
 }
 
-def sibling = { String key -> rootProject.file(rootProject.siblingArtifacts[key]) }
-
 dependencies {
-    minecraft 'com.mojang:minecraft:1.20.1'
-    mappings 'net.fabricmc:yarn:1.20.1+build.10:v2'
-    modImplementation 'net.fabricmc:fabric-loader:0.16.10'
-    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.92.3+1.20.1'
+    minecraft libs.minecraft
+    mappings "net.fabricmc:yarn:${libs.versions.yarn.get()}:v2"
+    modImplementation libs.fabric.loader
+    modImplementation libs.fabric.api
 
     implementation project(':server')
     include project(':server')
-    include implementation('org.tomlj:tomlj:1.1.1')
-    include 'org.antlr:antlr4-runtime:4.11.1'
+    // 版本目录条目是 Provider，implementation 不返回依赖对象，嵌套声明单独写。
+    implementation libs.tomlj
+    include libs.tomlj
+    include libs.antlr.runtime
     // 物种来自 Threatening，受击事实来自 Damage 观察事件；两者都是必装模组，运行时由完整装配提供。
-    modCompileOnly files(sibling('damageFabric'))
-    compileOnly files(sibling('damageServer'), sibling('frameworkServer'), sibling('humanoidServer'))
-    compileOnly 'com.google.protobuf:protobuf-java:4.36.2'
-    testImplementation 'junit:junit:4.13.2'
+    // 相邻仓库在 settings 中以源码组合，与原先读单个 JAR 一致只取各模块本身。
+    modCompileOnly('dev.kizuna.meridian.vanilla:fabric') { transitive = false }
+    compileOnly('dev.kizuna.meridian.vanilla:server') { transitive = false }
+    compileOnly('local.meridian:server') { transitive = false }
+    compileOnly('dev.kizuna.meridian.humanoid:server') { transitive = false }
+    compileOnly libs.protobuf.java
+    testImplementation libs.junit4
 }
 
 test { useJUnit() }
@@ -44,12 +47,12 @@ tasks.named('remapJar') {
 }
 
 // 开发运行沿用 Meridian 统一完整装配；Framework 与 Protobuf 在安装 JAR 中是嵌套库，开发时显式补齐。
-apply from: '../../Kizuna-Meridian-Mod-Framework/scripts/full-assembly.gradle'
+// Human 客户端库只在客户端测试运行时需要，按装配清单读已构建的 JAR。
+apply from: new File(kizunaWorkspace.directory('framework'), 'scripts/full-assembly.gradle')
 dependencies {
-    localRuntime files(sibling('frameworkServer'))
-    localRuntime 'com.google.protobuf:protobuf-java:4.36.2'
-    localRuntime files('../../Kizuna-Meridian-Human-Addon/client/build/libs/' +
-            'kizuna-meridian-human-addon-client-0.1.0-SNAPSHOT.jar')
+    localRuntime('local.meridian:server') { transitive = false }
+    localRuntime libs.protobuf.java
+    localRuntime files(kizunaWorkspace.artifact('human', 'client', false))
 }
 
 loom {

@@ -1,6 +1,6 @@
 # 第三方声明
 
-本仓库通过相邻仓库已构建的 JAR 使用 Meridian Framework、Human、Vanilla-Humanoid-Threatening 与 Vanilla-Damage，
+本仓库通过 Gradle composite build 使用 Meridian Framework、Vanilla-Humanoid-Threatening 与 Vanilla-Damage（经由它们组合 Human），
 开发运行按 Meridian 完整装配加载其余附属。各依赖保留其自身许可和声明文件。
 
 正式 JAR 嵌套以下第三方库，各自保留原许可：
