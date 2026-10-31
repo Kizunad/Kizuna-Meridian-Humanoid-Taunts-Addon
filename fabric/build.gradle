@@ -119,10 +119,14 @@ simulation-distance=2
     }
 }
 
-tasks.register('prepareClientTestWorld', Copy) {
-    from layout.buildDirectory.dir('gametest/world')
+// 客户端验收只取 GameTest 世界的 level.dat（平坦生成设置、数据包与世界时间），不带区块与实体，
+// GameTest 遗留的结构（如信标光束）不会进入截图背景；每次都重新同步，上一局的玩家位置和村民不留到下一局。
+tasks.register('prepareClientTestWorld', Sync) {
+    from(layout.buildDirectory.dir('gametest/world')) {
+        include 'level.dat'
+    }
     into layout.buildDirectory.dir('clienttest/saves/taunts-bubble-test')
-    exclude 'session.lock'
+    outputs.upToDateWhen { false }
 }
 tasks.named('runClientTest') {
     dependsOn tasks.named('prepareClientTestWorld')

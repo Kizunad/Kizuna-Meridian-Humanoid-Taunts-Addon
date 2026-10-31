@@ -12,7 +12,8 @@ python3 scripts/check_docs.py
 git diff --check
 ```
 
-`runClientTest` 复用 GameTest 生成的平坦世界（`build/gametest/world` 复制为单人存档 `taunts-bubble-test`），
+`runClientTest` 复用 GameTest 生成的平坦世界设置：每次只把 `build/gametest/world/level.dat` 同步为单人存档
+`taunts-bubble-test`，区块重新生成，GameTest 遗留的结构（如信标光束）与上一局的玩家位置、村民都不会带进截图；
 截图与聊天文本写到 `fabric/build/bubble-screens/`，结论写到 `fabric/build/clienttest-results.txt`，首行不是 `success=true` 时任务失败。
 
 ## JUnit（`server/`）
