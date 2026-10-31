@@ -4,6 +4,7 @@ import dev.kizuna.meridian.taunts.server.TauntCatalog;
 import dev.kizuna.meridian.taunts.server.TauntSettings;
 import dev.kizuna.meridian.vanilla.fabric.VanillaDamageFabric;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -24,6 +25,8 @@ public final class TauntsFabric implements ModInitializer {
         TauntSpeaker speaker = new TauntSpeaker(settings, catalog);
         VanillaDamageFabric.registerDamageObserver(speaker::onDamage);
         TauntCommands.register(speaker);
+        // 气泡包的类型在 26.2 要先登记编解码，客户端才能收到。
+        PayloadTypeRegistry.clientboundPlay().register(BubblePayload.TYPE, BubblePayload.CODEC);
     }
 
     static String catalogText(String language) {

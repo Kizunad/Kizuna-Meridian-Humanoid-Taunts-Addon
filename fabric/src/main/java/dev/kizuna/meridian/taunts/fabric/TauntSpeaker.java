@@ -80,6 +80,7 @@ final class TauntSpeaker {
 
     private void say(LivingEntity speaker, List<TauntLine> lines, Audience audience, Component addressee) {
         // 抽一句并记下，再把同一句发给 16 格内的玩家：聊天与气泡各自受开关控制。
+        // 聊天走 26.2 的系统消息入口，与 1.20.1 的 displayClientMessage(…, false) 是同一条路径。
         long tick = speaker.level().getGameTime();
         int index = memory(speaker).speak(audience, lines.size(), ThreadLocalRandom.current(), tick);
         Component line = TauntTexts.line(lines.get(index), addressee);
@@ -88,11 +89,11 @@ final class TauntSpeaker {
         if (settings.chat()) {
             Component message = TauntTexts.chat(speaker.getName(), line);
             for (ServerPlayer listener : listeners) {
-                listener.displayClientMessage(message, false /* overlay */);
+                listener.sendSystemMessage(message);
             }
         }
         if (settings.bubble()) {
-            TauntChannels.sendBubble(listeners, speaker, line);
+            BubblePayload.send(listeners, speaker, line);
         }
     }
 }

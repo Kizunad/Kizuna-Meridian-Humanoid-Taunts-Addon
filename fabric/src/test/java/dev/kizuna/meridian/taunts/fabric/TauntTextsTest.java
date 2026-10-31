@@ -6,9 +6,8 @@ import org.junit.Test;
 import java.util.List;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.ComponentContents;
 import net.minecraft.network.chat.TextColor;
-import net.minecraft.network.chat.contents.LiteralContents;
+import net.minecraft.network.chat.contents.PlainTextContents;
 import net.minecraft.network.chat.contents.TranslatableContents;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -22,6 +21,7 @@ public class TauntTextsTest {
     @Test
     public void entityAttackerStaysTranslatableComponent() {
         // 名字是独立的翻译组件，前后两段是字面文本；服务端拿不到也不需要中文名。
+        // 26.2 的空内容与字面文本并入 PlainTextContents。
         Component attacker = Component.translatable(VINDICATOR_KEY);
         Component line = TauntTexts.line(TauntLine.parse("你再碰我一下，{attacker}，铁傀儡马上就到！"), attacker);
         List<Component> parts = line.getSiblings();
@@ -30,13 +30,14 @@ public class TauntTextsTest {
         assertSame(attacker, parts.get(1));
         assertEquals(VINDICATOR_KEY, ((TranslatableContents) parts.get(1).getContents()).getKey());
         assertEquals("，铁傀儡马上就到！", literal(parts.get(2)));
-        assertSame(ComponentContents.EMPTY, line.getContents());
+        assertSame(PlainTextContents.EMPTY, line.getContents());
     }
 
     @Test
     public void playerAttackerKeepsLiteralName() {
+        // 26.2 的 append(String) 跳过空串，台词以名字开头时名字就是第一个子组件；拼出的整句不变。
         Component line = TauntTexts.line(TauntLine.parse("{attacker}，你的步法全是破绽。"), Component.literal("Steve"));
-        assertEquals("Steve", literal(line.getSiblings().get(1)));
+        assertEquals("Steve", literal(line.getSiblings().get(0)));
         assertEquals("Steve，你的步法全是破绽。", line.getString());
     }
 
@@ -52,6 +53,7 @@ public class TauntTextsTest {
     }
 
     private static String literal(Component text) {
-        return ((LiteralContents) text.getContents()).text();
+        // 取字面文本组件的原文。
+        return ((PlainTextContents.LiteralContents) text.getContents()).text();
     }
 }

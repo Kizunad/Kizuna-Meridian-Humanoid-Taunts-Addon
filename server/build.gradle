@@ -1,7 +1,7 @@
 description = '类人垃圾话台词表、发言记忆与配置的纯 Java 规则。'
 
 dependencies {
-    // Gson 由 Minecraft 1.20.1 运行时提供，那里是 2.10，不能用 2.10.1 新增的 API；TOML 库随 Fabric JAR 嵌套。
+    // Gson 由 Minecraft 运行时提供（26.2 是 2.14.0），编译用版本目录的 2.10.1，新版向下兼容；TOML 库随 Fabric JAR 嵌套。
     compileOnly libs.gson
     implementation libs.tomlj
     testImplementation project(':shared')

@@ -1,11 +1,13 @@
 # 构建与验证
 
-Java 17、Gradle 8.14.6 wrapper、Loom 1.13.6，版本取自 Framework 的版本目录。Framework、Threatening 与 Damage 在 `settings.gradle` 中按
-Framework 统一装配清单以源码组合，编译与开发运行使用其当前输出；客户端测试所需的 Human 客户端库按清单读已构建的 JAR。
+Minecraft 26.2、Java 25、Gradle 9.8.0 wrapper、Loom 1.19.3（26.x 不混淆，不重映射），版本取自 Framework 的版本目录。
+Framework、Threatening 与 Damage 在 `settings.gradle` 中按 Framework 统一装配清单以源码组合，
+编译与开发运行使用其当前输出；客户端测试所需的 Human 客户端库按清单读已构建的 JAR。
 
 ```bash
 ./gradlew test build :fabric:runGametest
-xvfb-run -a -s "-screen 0 1280x960x24" ./gradlew :fabric:runClientTest
+env -u DISPLAY -u WAYLAND_DISPLAY LIBGL_ALWAYS_SOFTWARE=1 JAVA_TOOL_OPTIONS=-Dfabric.noGui=true \
+  xvfb-run -a -s "-screen 0 1280x960x24" ./gradlew :fabric:runClientTest
 python3 scripts/check_docs.py
 git diff --check
 ```
@@ -64,3 +66,31 @@ git diff --check
   GameTest 在真实运行时上解析台词表，能发现越界调用。
 - Damage 的观察事件 `registerDamageObserver` 仍在 Damage 工作区里未提交；Damage 提交前，
   本仓库只能对着它当前的构建产物编译和测试。
+
+## 2026-11-01：S3 迁到 Minecraft 26.2
+
+Minecraft 26.2、Java 25、Gradle 9.8.0 wrapper、Loom 1.19.3（26.x 不混淆，不重映射），依赖改为普通 `implementation`/`compileOnly`。
+正式代码只做 26.2 改名与接口替换，不改行为：
+
+- 气泡包改为 `BubblePayload`：通道 ID 与编解码只定义一份，模组初始化时登记为发往客户端的载荷；
+  台词组件由 1.20.1 的 JSON 字符串改为 26.2 的结构化组件编码（收发两端都是本模组）。收包回调已在客户端主线程，去掉转交。
+- 聊天改 `sendSystemMessage`：1.20.1 的 `displayClientMessage(…, false)` 本就委托给它，路径与显示不变。
+- 气泡绘制拆成 26.2 的提取与提交两步：`END_EXTRACTION` 取说话者插值位置（游戏冻结时按原版实体规则取插值进度）
+  与折好的行，`COLLECT_SUBMITS` 提交底色几何与文字。坐标系照 26.2 原版名牌（镜头朝向、`scale(0.025, -0.025, 0.025)`），
+  远离镜头改为 -z，底色深度相应写成 -0.01，仍在文字之后；尺寸、颜色、全亮、4 秒、16 格不变。
+- `server/` 编译仍用版本目录的 Gson 2.10.1；26.2 运行时自带 2.14.0，向下兼容。
+- 26.2 原版 `MutableComponent.append(String)` 跳过空串（1.20.1 照样追加空字面子组件）：台词以 `{attacker}` 开头时
+  名字成为第一个子组件，拼出的整句与显示不变；`TauntTextsTest` 与 GameTest 改为按名字组件查找，不再按下标取。
+
+GameTest 改用 Fabric `@GameTest`，各例显式写 1.20.1 默认的 100 tick（26.2 默认只有 20 tick），冷却用例上限不变；
+1.20.1 的每例一批改为每例一个空测试环境（`test_environment/`），仍互不串听。
+受击改 `hurtServer`，权限 2/0 改 `GAMEMASTER`/`NO_PERMISSIONS`，实体类型常量改 `EntityTypes`，
+字面文本与空内容改 `PlainTextContents`。客户端测试的截图改为 26.2 的异步回调（等待回调期间停在 `CAPTURING`），
+HUD 显隐、加载遮罩与提示改经 `client.gui`，取像素改 ARGB 排列，`options.txt` 预置的数据版本由 3465 改为 4903。
+
+命令：`./gradlew test build :fabric:compileGametestJava :fabric:compileClientTestJava`；
+`python3 scripts/check_docs.py`；`git diff --check`。
+
+结果：JUnit 19/19（`TauntCatalogTest` 4、`TauntMemoryTest` 3、`TauntSettingsTest` 2、`TauntBubbleLinesTest` 7、
+`TauntTextsTest` 3），GameTest 与客户端测试源集编译通过，文档检查通过（5 个页面）。
+GameTest 与客户端测试尚未运行：完整装配里还有附属没迁完，迁完后用正式完整装配统一跑。

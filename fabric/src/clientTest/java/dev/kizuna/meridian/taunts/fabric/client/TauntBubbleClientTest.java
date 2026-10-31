@@ -1,27 +1,26 @@
 package dev.kizuna.meridian.taunts.fabric.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import dev.kizuna.meridian.taunts.fabric.TauntChannels;
+import dev.kizuna.meridian.taunts.fabric.BubblePayload;
 import dev.kizuna.meridian.taunts.server.TauntCatalog;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
-import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.ChatFormatting;
-import net.minecraft.Util;
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.Font;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.util.Util;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.phys.Vec3;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -62,10 +61,10 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     private static final int MIN_CHANGED_PIXELS = 2000;
     private static final int CHANNEL_MASK = 0xFF;
     private static final int GREEN_SHIFT = 8;
-    private static final int BLUE_SHIFT = 16;
+    private static final int RED_SHIFT = 16;
     private static final int ALPHA_SHIFT = 24;
     private static final int CHANNELS = 3;
-    private static final int[] CHANNEL_SHIFTS = {0, GREEN_SHIFT, BLUE_SHIFT};
+    private static final int[] CHANNEL_SHIFTS = {0, GREEN_SHIFT, RED_SHIFT};
     /** 轮廓只认气泡底色：像素等于原画面与白色按底色不透明度混合，每通道容差 10（两次截图间天空略有漂移）。 */
     private static final float BACKGROUND_ALPHA =
             (TauntBubbles.BACKGROUND_COLOR >>> ALPHA_SHIFT) / (float) CHANNEL_MASK;
@@ -102,11 +101,12 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     private NativeImage lateImage;
     private NativeImage hiddenImage;
 
-    private enum Stage { WAITING, STRIKING, SETTLING, SHOWN, LATE, WRAPPING, DONE }
+    private enum Stage { WAITING, STRIKING, SETTLING, SHOWN, LATE, WRAPPING, CAPTURING, DONE }
 
     @Override
     public void onInitializeClient() {
-        // 截图在客户端刻末尾读取主帧缓冲，此时其中是上一帧完整画面。
+        // 截图在客户端刻末尾发起主帧缓冲拷贝，此时其中是上一帧完整画面；
+        // 26.2 的截图在显存拷贝完成后才回调，等待回调期间停在 CAPTURING。
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> messages.add(message));
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
     }
@@ -120,16 +120,21 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
             finish("超时，停在 " + stage);
             return;
         }
-        if (ticks < READY_TICKS || client.player == null || client.getOverlay() != null || client.getSingleplayerServer() == null) {
+        // 26.2 的加载遮罩与提示框挂在 client.gui 上。
+        if (ticks < READY_TICKS || client.player == null || client.gui.overlay() != null
+                || client.getSingleplayerServer() == null) {
             return;
         }
-        client.getToasts().clear();
+        client.gui.toastManager().clear();
+        if (stage == Stage.CAPTURING) {
+            return;
+        }
         try {
             switch (stage) {
                 case WAITING -> start(client);
                 case STRIKING -> awaitChat(client);
                 case SETTLING -> awaitSettled(client);
-                case SHOWN -> awaitLate();
+                case SHOWN -> awaitLate(client);
                 case LATE -> awaitGone(client);
                 case WRAPPING -> awaitWrapped(client);
                 default -> throw new IllegalStateException(stage.name());
@@ -141,14 +146,17 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
 
     private void start(Minecraft client) throws Exception {
         // 平视前方；村民放在视线正前方 5 格、面朝玩家，伤害在服务端线程按玩家攻击结算。
-        client.options.hideGui = false;
+        // 26.2 的 F1 隐藏开关改由 client.gui.hud 维护，界面同样经 client.gui 关闭；玩家档案改为记录类型。
+        if (client.gui.hud.isHidden()) {
+            client.gui.hud.toggle();
+        }
         client.options.pauseOnLostFocus = false;
         client.options.cloudStatus().set(CloudStatus.OFF);
-        client.setScreen(null);
+        client.gui.setScreen(null);
         client.player.setXRot(LEVEL_PITCH);
         Files.createDirectories(SCREENS);
         Files.deleteIfExists(WRAP_TEXT);
-        playerName = client.player.getGameProfile().getName();
+        playerName = client.player.getGameProfile().name();
         var server = client.getSingleplayerServer();
         UUID playerId = client.player.getUUID();
         strike = server.submit(() -> strike(server.getPlayerList().getPlayer(playerId)));
@@ -156,14 +164,15 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     }
 
     private static int strike(ServerPlayer player) {
-        Villager villager = EntityType.VILLAGER.create(player.serverLevel());
+        // 26.2 创建实体要给出生成原因（只用于生成检查）；服务端玩家直接由 level() 给出所在世界。
+        Villager villager = EntityTypes.VILLAGER.create(player.level(), EntitySpawnReason.COMMAND);
         Vec3 ahead = Vec3.directionFromRotation(LEVEL_PITCH, player.getYRot()).scale(SPEAKER_DISTANCE);
         Vec3 position = player.position().add(ahead);
         float facing = Mth.wrapDegrees(player.getYRot() + HALF_TURN);
-        villager.moveTo(position.x, position.y, position.z, facing, LEVEL_PITCH);
+        villager.snapTo(position.x, position.y, position.z, facing, LEVEL_PITCH);
         villager.setNoAi(true);
-        player.serverLevel().addFreshEntity(villager);
-        villager.hurt(player.damageSources().playerAttack(player), LIGHT_HIT);
+        player.level().addFreshEntity(villager);
+        villager.hurtServer(player.level(), player.damageSources().playerAttack(player), LIGHT_HIT);
         return villager.getId();
     }
 
@@ -201,28 +210,41 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         }
     }
 
-    private void awaitSettled(Minecraft client) throws Exception {
+    private void awaitSettled(Minecraft client) {
         // 等击退停下、气泡已画进完整的一帧。
         if (ticks - heardTick < SETTLE_TICKS) {
             return;
         }
-        visibleImage = capture("bubble-visible.png");
-        stage = Stage.SHOWN;
+        capture(client, "bubble-visible.png", image -> {
+            visibleImage = image;
+            stage = Stage.SHOWN;
+        });
     }
 
-    private void awaitLate() throws Exception {
+    private void awaitLate(Minecraft client) {
+        // 3.5 秒时气泡应仍在；截图留到消失后一起比较。
         if (Util.getMillis() - heardMillis < LATE_MILLIS) {
             return;
         }
-        lateImage = capture("bubble-late.png");
-        stage = Stage.LATE;
+        capture(client, "bubble-late.png", image -> {
+            lateImage = image;
+            stage = Stage.LATE;
+        });
     }
 
-    private void awaitGone(Minecraft client) throws Exception {
+    private void awaitGone(Minecraft client) {
+        // 4 秒后取消失后的截图，回调里比较像素与轮廓。
         if (Util.getMillis() - heardMillis < TauntBubbles.VISIBLE_MILLIS + GONE_MARGIN_MILLIS) {
             return;
         }
-        hiddenImage = capture("bubble-hidden.png");
+        capture(client, "bubble-hidden.png", image -> {
+            hiddenImage = image;
+            compareGone(client);
+        });
+    }
+
+    private void compareGone(Minecraft client) throws Exception {
+        // 显示、3.5 秒与消失三张图比较：像素变化够多、轮廓是圆角加尾巴，再检查台词表折行并开始折行截图。
         Bounds probe = probe(hiddenImage);
         int shown = changedPixels(visibleImage, hiddenImage, probe);
         int late = changedPixels(lateImage, hiddenImage, probe);
@@ -252,13 +274,18 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         stage = Stage.WRAPPING;
     }
 
-    private void awaitWrapped(Minecraft client) throws Exception {
-        // 换上的气泡画进完整一帧后截图，像素变化证明它确实画出；两句都截完才结束。
+    private void awaitWrapped(Minecraft client) {
+        // 换上的气泡画进完整一帧后截图，回调里比较。
         if (ticks - wrapTick < SETTLE_TICKS) {
             return;
         }
         String file = shots.get(shotIndex).file();
-        try (NativeImage wrapped = capture(file)) {
+        capture(client, file, image -> compareWrapped(client, file, image));
+    }
+
+    private void compareWrapped(Minecraft client, String file, NativeImage captured) throws Exception {
+        // 像素变化证明换上的气泡确实画出；两句都截完才结束。
+        try (NativeImage wrapped = captured) {
             int changed = changedPixels(wrapped, hiddenImage, probe(hiddenImage));
             appendWrapNote(file + " changed=" + changed + "\n");
             if (changed < MIN_CHANGED_PIXELS) {
@@ -358,11 +385,8 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     }
 
     private static void sendBubble(ServerPlayer player, int speakerId, String line) {
-        // 载荷编码与 TauntChannels 相同：实体网络 ID + 文本组件。
-        FriendlyByteBuf buffer = PacketByteBufs.create();
-        buffer.writeVarInt(speakerId);
-        buffer.writeComponent(Component.literal(line));
-        ServerPlayNetworking.send(player, TauntChannels.BUBBLE, buffer);
+        // 与正式发言同一个气泡包：实体网络 ID + 文本组件。
+        ServerPlayNetworking.send(player, new BubblePayload(speakerId, Component.literal(line)));
     }
 
     private static void appendWrapNote(String note) throws Exception {
@@ -447,10 +471,18 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         return new Tip(width, center);
     }
 
-    private static NativeImage capture(String name) throws Exception {
-        NativeImage image = Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
-        image.writeToFile(SCREENS.resolve(name));
-        return image;
+    private void capture(Minecraft client, String name, CaptureStep next) {
+        // 拷贝完成后先存盘再交给下一步；回调里的失败同样结束测试并写入报告（重复关闭图像无害）。
+        stage = Stage.CAPTURING;
+        Screenshot.takeScreenshot(client.gameRenderer.mainRenderTarget(), image -> {
+            try {
+                image.writeToFile(SCREENS.resolve(name));
+                next.accept(image);
+            } catch (Exception failure) {
+                image.close();
+                finish(failure.toString());
+            }
+        });
     }
 
     private static int changedPixels(NativeImage shown, NativeImage hidden, Bounds probe) {
@@ -467,13 +499,15 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     }
 
     private static boolean changed(NativeImage shown, NativeImage hidden, int x, int y, int threshold) {
-        return Math.abs(luminance(shown.getPixelRGBA(x, y)) - luminance(hidden.getPixelRGBA(x, y))) >= threshold;
+        // 26.2 公开的取像素入口按 ARGB 排列；亮度是三通道平均，与旧版按 ABGR 拆分结果相同。
+        return Math.abs(luminance(shown.getPixel(x, y)) - luminance(hidden.getPixel(x, y))) >= threshold;
     }
 
     private static boolean whitened(NativeImage shown, NativeImage hidden, int x, int y) {
         // 三个通道都要符合与白色的混合结果，村民轻微移动或天空漂移造成的变化都不算。
-        int after = shown.getPixelRGBA(x, y);
-        int before = hidden.getPixelRGBA(x, y);
+        // 三个通道逐一同样检查，按 26.2 的 ARGB 排列取像素不影响结果。
+        int after = shown.getPixel(x, y);
+        int before = hidden.getPixel(x, y);
         for (int shift : CHANNEL_SHIFTS) {
             int beforeChannel = before >> shift & CHANNEL_MASK;
             int afterChannel = after >> shift & CHANNEL_MASK;
@@ -485,10 +519,11 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         return luminance(after) - luminance(before) >= MIN_WHITENING;
     }
 
-    private static int luminance(int abgr) {
-        int red = abgr & CHANNEL_MASK;
-        int green = abgr >> GREEN_SHIFT & CHANNEL_MASK;
-        int blue = abgr >> BLUE_SHIFT & CHANNEL_MASK;
+    private static int luminance(int argb) {
+        // 按 26.2 的 ARGB 排列拆出红绿蓝三通道。
+        int red = argb >> RED_SHIFT & CHANNEL_MASK;
+        int green = argb >> GREEN_SHIFT & CHANNEL_MASK;
+        int blue = argb & CHANNEL_MASK;
         return (red + green + blue) / CHANNELS;
     }
 
@@ -522,4 +557,10 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
 
     /** 相邻两行接缝处的三类折行问题。 */
     private enum Fault { LEADING_PUNCTUATION, TRAILING_OPENING, SPLIT_WORD }
+
+    /** 截图回调里的下一步；可能因断言或写文件失败而抛出。 */
+    @FunctionalInterface
+    private interface CaptureStep {
+        void accept(NativeImage image) throws Exception;
+    }
 }

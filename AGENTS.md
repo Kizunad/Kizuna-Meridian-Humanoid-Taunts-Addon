@@ -1,6 +1,6 @@
 # 仓库协作约定
 
-- 本仓库只收 Minecraft Java 版 1.20.1 的类人受击垃圾话：台词数据、抽取规则、聊天与头顶气泡、调试命令。物种与身体宿主归 Vanilla-Humanoid-Threatening，伤害结算归 Vanilla-Damage，权威身体状态归 Framework。
+- 本仓库只收 Minecraft Java 版 26.2 的类人受击垃圾话：台词数据、抽取规则、聊天与头顶气泡、调试命令。物种与身体宿主归 Vanilla-Humanoid-Threatening，伤害结算归 Vanilla-Damage，权威身体状态归 Framework。
 - Meridian 各附属按完整装配运行；不得添加缺少必需附属时的替代路径、降级或可选依赖判断。
 - 不复制宿主或结算代码：说话者只认 Threatening 的 `HumanoidSpecies`，受击只订阅 Damage 提交后的观察事件。
 - 台词由交接目录里的生成稿合并而来，不在仓库里手写或改写台词；新语言按 `taunts/<language>.json` 加文件。
