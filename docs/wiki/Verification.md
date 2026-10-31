@@ -36,7 +36,7 @@ git diff --check
 | `vindicatorAttackerIsNamedByTranslationKey` | 卫道士打村民，正好 16 格处的玩家收到一条聊天，台词里是 `entity.minecraft.vindicator` 可翻译组件，台词来自「对生物」 |
 | `cooldownSilencesRepeatedHitsForSixSeconds` | 说过一句后立刻再打不说；120 tick 后再打又说，且与上一句不同 |
 | `lethalHitStaysSilent` | 致死一击后村民死亡，附近玩家没有收到聊天 |
-| `sayCommandSpeaksNowAndCompletes` | `say <uuid> entity` 用「对生物」台词；玩家执行 `say <uuid>` 用「对玩家」台词且台词里是执行者名字；对牛执行失败；`player`、`entity` 可补全 |
+| `tauntCommandSpeaksNowAndCompletes` | `/meridian humanoid taunt <uuid> entity` 用「对生物」台词；玩家执行 `taunt <uuid>` 用「对玩家」台词且台词里是执行者名字；对牛执行失败；`player`、`entity` 可补全；`/meridian humanoid` 下权限 2 能补全到 `taunt`、权限 0 看不到；旧根 `/meridian_humanoid_taunts` 不存在 |
 
 ## Xvfb 客户端测试（`fabric/src/clientTest`）
 

@@ -4,14 +4,13 @@ import dev.kizuna.meridian.taunts.server.TauntCatalog;
 import dev.kizuna.meridian.taunts.server.TauntSettings;
 import dev.kizuna.meridian.vanilla.fabric.VanillaDamageFabric;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
-/** 垃圾话入口：读配置与对应语言的台词表，订阅 Damage 提交后的伤害事实，注册调试命令。 */
+/** 垃圾话入口：读配置与对应语言的台词表，订阅 Damage 提交后的伤害事实，向 /meridian 注册点登记调试指令。 */
 public final class TauntsFabric implements ModInitializer {
     public static final String MOD_ID = "meridian_humanoid_taunts";
     static final String SETTINGS_FILE = "meridian-humanoid-taunts.toml";
@@ -24,8 +23,7 @@ public final class TauntsFabric implements ModInitializer {
         TauntCatalog catalog = TauntCatalog.parse(catalogText(settings.language()));
         TauntSpeaker speaker = new TauntSpeaker(settings, catalog);
         VanillaDamageFabric.registerDamageObserver(speaker::onDamage);
-        CommandRegistrationCallback.EVENT.register(
-                (dispatcher, registryAccess, environment) -> dispatcher.register(TauntCommands.command(speaker)));
+        TauntCommands.register(speaker);
     }
 
     static String catalogText(String language) {

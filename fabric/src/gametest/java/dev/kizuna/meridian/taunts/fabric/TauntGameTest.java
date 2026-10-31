@@ -52,6 +52,7 @@ public final class TauntGameTest implements FabricGameTest {
     private static final int COOLDOWN_TICKS = 120;
     private static final int COOLDOWN_TICK_LIMIT = COOLDOWN_TICKS + 40;
     private static final int PERMISSION_LEVEL = 2;
+    private static final String TAUNT = "meridian humanoid " + TauntCommands.NODE + " ";
     private static final TauntCatalog CATALOG = TauntCatalog.parse(TauntsFabric.catalogText(LANGUAGE));
 
     @GameTest(template = EMPTY_STRUCTURE, batch = "taunts_player")
@@ -134,7 +135,7 @@ public final class TauntGameTest implements FabricGameTest {
     }
 
     @GameTest(template = EMPTY_STRUCTURE, batch = "taunts_command")
-    public void sayCommandSpeaksNowAndCompletes(GameTestHelper context) throws CommandSyntaxException {
+    public void tauntCommandSpeaksNowAndCompletes(GameTestHelper context) throws CommandSyntaxException {
         LivingEntity villager = humanoid(context, EntityType.VILLAGER);
         LivingEntity cow = context.spawn(EntityType.COW, SPAWN_X, SPAWN_Y, SPAWN_Z);
         Listener operator = listener(context, "TauntOperator", villager, NEAR);
@@ -142,18 +143,24 @@ public final class TauntGameTest implements FabricGameTest {
             CommandDispatcher<CommandSourceStack> dispatcher =
                     context.getLevel().getServer().getCommands().getDispatcher();
             CommandSourceStack source = operator.createCommandSourceStack().withPermission(PERMISSION_LEVEL);
-            String say = TauntsFabric.MOD_ID + " say " + villager.getStringUUID();
-            context.assertTrue(dispatcher.execute(say + " entity", source) == 1, "say entity 应成功");
-            context.assertTrue(dispatcher.execute(say, source) == 1, "冷却中的 say 也应立刻说");
+            String taunt = TAUNT + villager.getStringUUID();
+            context.assertTrue(dispatcher.execute(taunt + " entity", source) == 1, "taunt entity 应成功");
+            context.assertTrue(dispatcher.execute(taunt, source) == 1, "冷却中的 taunt 也应立刻说");
             List<Component> chats = chats(operator);
-            context.assertTrue(chats.size() == 2, "两次 say 应各说一句，实际 " + chats.size());
+            context.assertTrue(chats.size() == 2, "两次 taunt 应各说一句，实际 " + chats.size());
             context.assertTrue(audience(line(chats.get(0))) == Audience.ENTITY, "指定 entity 应抽对生物台词");
             context.assertTrue(audience(line(chats.get(1))) == Audience.PLAYER, "玩家执行且不指定时应抽对玩家台词");
             context.assertTrue("TauntOperator".equals(literal(line(chats.get(1)).getSiblings().get(1))),
                     "命令台词里应是执行者名字");
-            requireSilent(dispatcher, source, TauntsFabric.MOD_ID + " say " + cow.getStringUUID());
-            Set<String> options = suggestions(dispatcher, source, say + " ");
-            context.assertTrue(options.containsAll(Set.of("player", "entity")), "say 应补全 player/entity：" + options);
+            requireSilent(dispatcher, source, TAUNT + cow.getStringUUID());
+            Set<String> options = suggestions(dispatcher, source, taunt + " ");
+            context.assertTrue(options.containsAll(Set.of("player", "entity")), "taunt 应补全 player/entity：" + options);
+            // 指令挂在 /meridian humanoid 下：管理员能补全到 taunt，权限 0 看不到；旧根不留别名。
+            Set<String> humanoid = suggestions(dispatcher, source, "meridian humanoid ");
+            context.assertTrue(humanoid.contains(TauntCommands.NODE), "humanoid 下应补全 taunt：" + humanoid);
+            Set<String> player = suggestions(dispatcher, source.withPermission(0), "meridian humanoid ");
+            context.assertFalse(player.contains(TauntCommands.NODE), "权限 0 不应看到 taunt：" + player);
+            context.assertTrue(dispatcher.getRoot().getChild(TauntsFabric.MOD_ID) == null, "旧根 /" + TauntsFabric.MOD_ID + " 应已删除");
         } finally {
             leave(context, operator);
         }
@@ -231,7 +238,7 @@ public final class TauntGameTest implements FabricGameTest {
         } catch (CommandSyntaxException expected) {
             return;
         }
-        throw new GameTestAssertException("对没有台词的实体 say 应失败：" + command);
+        throw new GameTestAssertException("对没有台词的实体 taunt 应失败：" + command);
     }
 
     private static Set<String> suggestions(CommandDispatcher<CommandSourceStack> dispatcher,

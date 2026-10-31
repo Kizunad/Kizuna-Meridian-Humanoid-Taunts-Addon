@@ -1,6 +1,6 @@
 # 整合接口
 
-本模组只使用 Threatening 与 Damage 已有的公开入口，不改这两个仓库，也不复制它们的代码。
+本模组只使用 Framework、Threatening 与 Damage 已有的公开入口，不改这些仓库，也不复制它们的代码。
 
 ## Threatening 物种
 
@@ -18,6 +18,11 @@
 
 观察事件只对有身体的目标触发，所以「有身体的生人」这一条件由 Damage 保证；原版 `hurt()` 被取消、
 没有进入身体事务的伤害不会触发。观察方抛出的异常由 Damage 隔离，不改变结算。
+
+## Framework 指令注册点
+
+`MeridianCommands.register(Branch.HUMANOID, "taunt", GAMEMASTER, …)`：调试命令挂在 `/meridian humanoid` 下，
+权限 2 由注册点套在 `taunt` 节点上。指令写法只在 [Framework 指令页](https://github.com/Kizunad/Kizuna-Meridian-Mod-Framework/wiki/Commands#humanoid)记录。
 
 ## 气泡网络包
 

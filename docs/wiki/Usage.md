@@ -38,15 +38,11 @@
 
 ## 命令
 
-根命令 `/meridian_humanoid_taunts`，需要权限等级 2，参数可 Tab 补全。
+本模组在 `/meridian humanoid` 下登记调试命令 `taunt`，让目标立刻说一句；写法、权限与补全见
+[Framework 指令页](https://github.com/Kizunad/Kizuna-Meridian-Mod-Framework/wiki/Commands#humanoid)。
 
-| 命令 | 作用 |
-| --- | --- |
-| `say <target>` | 让目标立刻说一句；执行者是玩家时用「对玩家」台词，否则用「对生物」台词 |
-| `say <target> player` | 用「对玩家」台词 |
-| `say <target> entity` | 用「对生物」台词 |
-
-`target` 是单个实体选择器。台词里的名字是执行者的名字；从控制台或命令方块执行时是命令源的显示名。
+不写台词对象时，执行者是玩家用「对玩家」台词，否则用「对生物」台词；写了 `player` 或 `entity` 就固定用对应的一组。
+台词里的名字是执行者的名字；从控制台或命令方块执行时是命令源的显示名。
 命令不看冷却和死活，但同样记入冷却与最近台词。目标不是生物、不是 Threatening 物种或台词表里没有它时，
 命令失败并提示「…没有垃圾话台词」。
 
