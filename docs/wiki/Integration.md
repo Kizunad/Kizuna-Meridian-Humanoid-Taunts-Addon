@@ -16,7 +16,7 @@
 - `attacker()`：伤害源的生物攻击者，可能为空；弹射物算射手；
 - `result().body().getVitality().getDead()`：提交后的身体是否死亡，用来跳过致死一击。
 
-观察事件只对有身体的目标触发，所以「有身体的生人」这一条件由 Damage 保证；原版 `damage()` 被取消、
+观察事件只对有身体的目标触发，所以「有身体的生人」这一条件由 Damage 保证；原版 `hurt()` 被取消、
 没有进入身体事务的伤害不会触发。观察方抛出的异常由 Damage 隔离，不改变结算。
 
 ## 气泡网络包
@@ -26,9 +26,9 @@ S2C 通道 `meridian_humanoid_taunts:bubble`，载荷依次为：
 | 字段 | 编码 | 含义 |
 | --- | --- | --- |
 | 实体 ID | VarInt | 说话者的实体网络 ID |
-| 台词 | `PacketByteBuf.writeText` | 已替换攻击者名字的文本组件，可翻译部分由客户端解析 |
+| 台词 | `FriendlyByteBuf.writeComponent` | 已替换攻击者名字的文本组件，可翻译部分由客户端解析 |
 
 服务端只向能接收此通道（装了本模组客户端）的玩家发送。客户端收到后在渲染线程登记气泡，
 在 `WorldRenderEvents.AFTER_ENTITIES` 里按原版名牌的坐标系绘制，断开连接时清空。
-气泡底色用 `RenderLayer.getTextBackground()` 按横条拼出圆角框与尾巴，深度比字形远 0.01 个字体像素，
+气泡底色用 `RenderType.textBackground()` 按横条拼出圆角框与尾巴，深度比字形远 0.01 个字体像素，
 与原版文字底色相同，所以文字始终压在底色上、气泡仍会被方块挡住。

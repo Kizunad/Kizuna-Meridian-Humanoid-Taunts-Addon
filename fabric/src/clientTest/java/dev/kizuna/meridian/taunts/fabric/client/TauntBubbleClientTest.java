@@ -1,5 +1,6 @@
 package dev.kizuna.meridian.taunts.fabric.client;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import dev.kizuna.meridian.taunts.fabric.TauntChannels;
 import dev.kizuna.meridian.taunts.server.TauntCatalog;
 import net.fabricmc.api.ClientModInitializer;
@@ -7,23 +8,21 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.option.CloudRenderMode;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.util.ScreenshotRecorder;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.passive.VillagerEntity;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Util;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.ChatFormatting;
+import net.minecraft.Util;
+import net.minecraft.client.CloudStatus;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
+import net.minecraft.client.gui.Font;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.phys.Vec3;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -88,7 +87,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     private static final Path WRAP_TEXT = SCREENS.resolve("wrap.txt");
     private static final String WRAP_SHOT = "bubble-wrap.png";
     private static final String NAME_SHOT = "bubble-wrap-name.png";
-    private final List<Text> messages = new CopyOnWriteArrayList<>();
+    private final List<Component> messages = new CopyOnWriteArrayList<>();
     private Stage stage = Stage.WAITING;
     private int ticks;
     private int heardTick;
@@ -112,7 +111,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
     }
 
-    private void tick(MinecraftClient client) {
+    private void tick(Minecraft client) {
         ticks++;
         if (stage == Stage.DONE) {
             return;
@@ -121,10 +120,10 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
             finish("超时，停在 " + stage);
             return;
         }
-        if (ticks < READY_TICKS || client.player == null || client.getOverlay() != null || client.getServer() == null) {
+        if (ticks < READY_TICKS || client.player == null || client.getOverlay() != null || client.getSingleplayerServer() == null) {
             return;
         }
-        client.getToastManager().clear();
+        client.getToasts().clear();
         try {
             switch (stage) {
                 case WAITING -> start(client);
@@ -140,40 +139,40 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         }
     }
 
-    private void start(MinecraftClient client) throws Exception {
+    private void start(Minecraft client) throws Exception {
         // 平视前方；村民放在视线正前方 5 格、面朝玩家，伤害在服务端线程按玩家攻击结算。
-        client.options.hudHidden = false;
+        client.options.hideGui = false;
         client.options.pauseOnLostFocus = false;
-        client.options.getCloudRenderMode().setValue(CloudRenderMode.OFF);
+        client.options.cloudStatus().set(CloudStatus.OFF);
         client.setScreen(null);
-        client.player.setPitch(LEVEL_PITCH);
+        client.player.setXRot(LEVEL_PITCH);
         Files.createDirectories(SCREENS);
         Files.deleteIfExists(WRAP_TEXT);
         playerName = client.player.getGameProfile().getName();
-        var server = client.getServer();
-        UUID playerId = client.player.getUuid();
-        strike = server.submit(() -> strike(server.getPlayerManager().getPlayer(playerId)));
+        var server = client.getSingleplayerServer();
+        UUID playerId = client.player.getUUID();
+        strike = server.submit(() -> strike(server.getPlayerList().getPlayer(playerId)));
         stage = Stage.STRIKING;
     }
 
-    private static int strike(ServerPlayerEntity player) {
-        VillagerEntity villager = EntityType.VILLAGER.create(player.getServerWorld());
-        Vec3d ahead = Vec3d.fromPolar(LEVEL_PITCH, player.getYaw()).multiply(SPEAKER_DISTANCE);
-        Vec3d position = player.getPos().add(ahead);
-        float facing = MathHelper.wrapDegrees(player.getYaw() + HALF_TURN);
-        villager.refreshPositionAndAngles(position.x, position.y, position.z, facing, LEVEL_PITCH);
-        villager.setAiDisabled(true);
-        player.getServerWorld().spawnEntity(villager);
-        villager.damage(player.getDamageSources().playerAttack(player), LIGHT_HIT);
+    private static int strike(ServerPlayer player) {
+        Villager villager = EntityType.VILLAGER.create(player.serverLevel());
+        Vec3 ahead = Vec3.directionFromRotation(LEVEL_PITCH, player.getYRot()).scale(SPEAKER_DISTANCE);
+        Vec3 position = player.position().add(ahead);
+        float facing = Mth.wrapDegrees(player.getYRot() + HALF_TURN);
+        villager.moveTo(position.x, position.y, position.z, facing, LEVEL_PITCH);
+        villager.setNoAi(true);
+        player.serverLevel().addFreshEntity(villager);
+        villager.hurt(player.damageSources().playerAttack(player), LIGHT_HIT);
         return villager.getId();
     }
 
-    private void awaitChat(MinecraftClient client) throws Exception {
+    private void awaitChat(Minecraft client) throws Exception {
         if (!strike.isDone()) {
             return;
         }
         villagerId = strike.join();
-        Text chat = messages.stream()
+        Component chat = messages.stream()
                 .filter(message -> message.getString().startsWith(SPEAKER_PREFIX))
                 .findFirst()
                 .orElse(null);
@@ -182,19 +181,19 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         }
         requireChineseChat(client, chat);
         heardTick = ticks;
-        heardMillis = Util.getMeasuringTimeMs();
+        heardMillis = Util.getMillis();
         stage = Stage.SETTLING;
     }
 
-    private void requireChineseChat(MinecraftClient client, Text chat) throws Exception {
+    private void requireChineseChat(Minecraft client, Component chat) throws Exception {
         // 名字由客户端按简体中文解析；聊天整行浅灰色，台词里是玩家自己的名字，不能残留占位符或翻译键。
-        String language = client.getLanguageManager().getLanguage();
+        String language = client.getLanguageManager().getSelected();
         if (!language.equals(LANGUAGE)) {
             throw new IllegalStateException("客户端语言不是简体中文：" + language);
         }
         String text = chat.getString();
         Files.writeString(CHAT_TEXT, text + "\n");
-        if (!TextColor.fromFormatting(Formatting.GRAY).equals(chat.getStyle().getColor())) {
+        if (!TextColor.fromLegacyFormat(ChatFormatting.GRAY).equals(chat.getStyle().getColor())) {
             throw new IllegalStateException("垃圾话聊天不是浅灰色：" + chat.getStyle());
         }
         if (!text.contains(playerName) || text.contains("{attacker}") || text.contains("entity.minecraft.")) {
@@ -202,7 +201,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         }
     }
 
-    private void awaitSettled(MinecraftClient client) throws Exception {
+    private void awaitSettled(Minecraft client) throws Exception {
         // 等击退停下、气泡已画进完整的一帧。
         if (ticks - heardTick < SETTLE_TICKS) {
             return;
@@ -212,15 +211,15 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     }
 
     private void awaitLate() throws Exception {
-        if (Util.getMeasuringTimeMs() - heardMillis < LATE_MILLIS) {
+        if (Util.getMillis() - heardMillis < LATE_MILLIS) {
             return;
         }
         lateImage = capture("bubble-late.png");
         stage = Stage.LATE;
     }
 
-    private void awaitGone(MinecraftClient client) throws Exception {
-        if (Util.getMeasuringTimeMs() - heardMillis < TauntBubbles.VISIBLE_MILLIS + GONE_MARGIN_MILLIS) {
+    private void awaitGone(Minecraft client) throws Exception {
+        if (Util.getMillis() - heardMillis < TauntBubbles.VISIBLE_MILLIS + GONE_MARGIN_MILLIS) {
             return;
         }
         hiddenImage = capture("bubble-hidden.png");
@@ -235,25 +234,25 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
             throw new IllegalStateException("气泡区域像素变化不足：visible=" + shown + " late=" + late);
         }
         requireBubbleShape(visibleImage, hiddenImage, outline, tip);
-        String splitNameLine = requireCatalogWraps(client.textRenderer);
-        requireWrappedLine(WRAP_LINE, Fault.LEADING_PUNCTUATION, client.textRenderer);
-        requireWrappedLine(splitNameLine, Fault.SPLIT_WORD, client.textRenderer);
+        String splitNameLine = requireCatalogWraps(client.font);
+        requireWrappedLine(WRAP_LINE, Fault.LEADING_PUNCTUATION, client.font);
+        requireWrappedLine(splitNameLine, Fault.SPLIT_WORD, client.font);
         shots = List.of(new WrapShot(WRAP_LINE, WRAP_SHOT), new WrapShot(splitNameLine, NAME_SHOT));
         showShot(client);
     }
 
-    private void showShot(MinecraftClient client) {
+    private void showShot(Minecraft client) {
         // 在服务端线程经正式气泡通道下发，同一实体的新台词替换旧气泡。
-        var server = client.getServer();
-        UUID playerId = client.player.getUuid();
+        var server = client.getSingleplayerServer();
+        UUID playerId = client.player.getUUID();
         int speakerId = villagerId;
         String line = shots.get(shotIndex).line();
-        server.execute(() -> sendBubble(server.getPlayerManager().getPlayer(playerId), speakerId, line));
+        server.execute(() -> sendBubble(server.getPlayerList().getPlayer(playerId), speakerId, line));
         wrapTick = ticks;
         stage = Stage.WRAPPING;
     }
 
-    private void awaitWrapped(MinecraftClient client) throws Exception {
+    private void awaitWrapped(Minecraft client) throws Exception {
         // 换上的气泡画进完整一帧后截图，像素变化证明它确实画出；两句都截完才结束。
         if (ticks - wrapTick < SETTLE_TICKS) {
             return;
@@ -274,10 +273,10 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         finish(null);
     }
 
-    private static void requireWrappedLine(String line, Fault expected, TextRenderer textRenderer) throws Exception {
+    private static void requireWrappedLine(String line, Fault expected, Font textRenderer) throws Exception {
         // 截图用例先确认原版折行确有这类问题，用例才有意义；新折行一类问题都不能有，且挂标点的行只超出一个字宽。
-        List<String> vanilla = strings(textRenderer.wrapLines(Text.literal(line), TauntBubbles.MAX_WIDTH));
-        List<String> wrapped = strings(TauntBubbles.rows(Text.literal(line), textRenderer));
+        List<String> vanilla = strings(textRenderer.split(Component.literal(line), TauntBubbles.MAX_WIDTH));
+        List<String> wrapped = strings(TauntBubbles.rows(Component.literal(line), textRenderer));
         appendWrapNote("vanilla=" + vanilla + "\nwrapped=" + wrapped + "\n");
         if (!faults(vanilla).contains(expected)) {
             throw new IllegalStateException("原版折行没有出现 " + expected + "，截图用例失效：" + vanilla);
@@ -285,16 +284,16 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         requireRows(line, wrapped, textRenderer);
     }
 
-    private static String requireCatalogWraps(TextRenderer textRenderer) throws Exception {
+    private static String requireCatalogWraps(Font textRenderer) throws Exception {
         // 台词表每一句代入同一个名字，按真实字体折行都不能出问题；顺带按类数出原版折行出问题的句数，
         // 并挑出第一句原版会拆开名字的台词，供第二张截图使用。
         List<String> lines = catalogLines();
         var vanillaFaults = new EnumMap<Fault, Integer>(Fault.class);
         String splitNameLine = null;
         for (String line : lines) {
-            Text text = Text.literal(line);
+            Component text = Component.literal(line);
             requireRows(line, strings(TauntBubbles.rows(text, textRenderer)), textRenderer);
-            EnumSet<Fault> vanilla = faults(strings(textRenderer.wrapLines(text, TauntBubbles.MAX_WIDTH)));
+            EnumSet<Fault> vanilla = faults(strings(textRenderer.split(text, TauntBubbles.MAX_WIDTH)));
             for (Fault fault : vanilla) {
                 vanillaFaults.merge(fault, 1, Integer::sum);
             }
@@ -309,7 +308,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         return splitNameLine;
     }
 
-    private static void requireRows(String line, List<String> rows, TextRenderer textRenderer) {
+    private static void requireRows(String line, List<String> rows, Font textRenderer) {
         // 三类问题都不能有；超出 120 像素的行，超出部分不多于它末尾那个字的宽度。
         EnumSet<Fault> found = faults(rows);
         if (!found.isEmpty()) {
@@ -317,7 +316,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         }
         for (String row : rows) {
             String last = new String(Character.toChars(row.codePointBefore(row.length())));
-            if (textRenderer.getWidth(row) > TauntBubbles.MAX_WIDTH + textRenderer.getWidth(last)) {
+            if (textRenderer.width(row) > TauntBubbles.MAX_WIDTH + textRenderer.width(last)) {
                 throw new IllegalStateException("行宽超出一个字以上：" + line + " → " + row);
             }
         }
@@ -358,11 +357,11 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         }
     }
 
-    private static void sendBubble(ServerPlayerEntity player, int speakerId, String line) {
+    private static void sendBubble(ServerPlayer player, int speakerId, String line) {
         // 载荷编码与 TauntChannels 相同：实体网络 ID + 文本组件。
-        PacketByteBuf buffer = PacketByteBufs.create();
+        FriendlyByteBuf buffer = PacketByteBufs.create();
         buffer.writeVarInt(speakerId);
-        buffer.writeText(Text.literal(line));
+        buffer.writeComponent(Component.literal(line));
         ServerPlayNetworking.send(player, TauntChannels.BUBBLE, buffer);
     }
 
@@ -371,12 +370,12 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         Files.writeString(WRAP_TEXT, note, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
 
-    private static List<String> strings(List<OrderedText> rows) {
+    private static List<String> strings(List<FormattedCharSequence> rows) {
         // 把行文本还原成字符串，比较断点。
         return rows.stream().map(TauntBubbleClientTest::string).toList();
     }
 
-    private static String string(OrderedText row) {
+    private static String string(FormattedCharSequence row) {
         // 按码点逐字拼回，代理对字符也不会被拆开。
         var builder = new StringBuilder();
         row.accept((index, style, codePoint) -> {
@@ -449,8 +448,8 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     }
 
     private static NativeImage capture(String name) throws Exception {
-        NativeImage image = ScreenshotRecorder.takeScreenshot(MinecraftClient.getInstance().getFramebuffer());
-        image.writeTo(SCREENS.resolve(name));
+        NativeImage image = Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
+        image.writeToFile(SCREENS.resolve(name));
         return image;
     }
 
@@ -468,13 +467,13 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     }
 
     private static boolean changed(NativeImage shown, NativeImage hidden, int x, int y, int threshold) {
-        return Math.abs(luminance(shown.getColor(x, y)) - luminance(hidden.getColor(x, y))) >= threshold;
+        return Math.abs(luminance(shown.getPixelRGBA(x, y)) - luminance(hidden.getPixelRGBA(x, y))) >= threshold;
     }
 
     private static boolean whitened(NativeImage shown, NativeImage hidden, int x, int y) {
         // 三个通道都要符合与白色的混合结果，村民轻微移动或天空漂移造成的变化都不算。
-        int after = shown.getColor(x, y);
-        int before = hidden.getColor(x, y);
+        int after = shown.getPixelRGBA(x, y);
+        int before = hidden.getPixelRGBA(x, y);
         for (int shift : CHANNEL_SHIFTS) {
             int beforeChannel = before >> shift & CHANNEL_MASK;
             int afterChannel = after >> shift & CHANNEL_MASK;
@@ -510,7 +509,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         } catch (Exception reportFailure) {
             throw new IllegalStateException(reportFailure);
         }
-        MinecraftClient.getInstance().scheduleStop();
+        Minecraft.getInstance().stop();
     }
 
     /** 屏幕像素外接框，四边都包含在内。 */

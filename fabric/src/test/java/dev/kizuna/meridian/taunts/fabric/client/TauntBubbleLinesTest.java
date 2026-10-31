@@ -1,14 +1,14 @@
 package dev.kizuna.meridian.taunts.fabric.client;
 
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.Formatting;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.TextColor;
+import net.minecraft.util.FormattedCharSequence;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -69,12 +69,12 @@ public class TauntBubbleLinesTest {
     @Test
     public void stylesSurviveTheBreak() {
         // 比一行还长的名字只能拆开，各段都保留原样式；前面的字与后面的标点仍是无样式文本。
-        Text line = Text.literal("一")
-                .append(Text.literal("ABCDEFG").formatted(Formatting.RED))
+        Component line = Component.literal("一")
+                .append(Component.literal("ABCDEFG").withStyle(ChatFormatting.RED))
                 .append("！");
-        List<OrderedText> rows = TauntBubbleLines.wrap(line, ROW_WIDTH, (codePoint, style) -> GLYPH_WIDTH);
+        List<FormattedCharSequence> rows = TauntBubbleLines.wrap(line, ROW_WIDTH, (codePoint, style) -> GLYPH_WIDTH);
         assertEquals(List.of("一", "ABCD", "EFG！"), strings(rows));
-        TextColor red = TextColor.fromFormatting(Formatting.RED);
+        TextColor red = TextColor.fromLegacyFormat(ChatFormatting.RED);
         assertNull(styles(rows.get(0)).get(0).getColor());
         assertEquals(red, styles(rows.get(1)).get(0).getColor());
         List<Style> last = styles(rows.get(2));
@@ -85,15 +85,15 @@ public class TauntBubbleLinesTest {
 
     private static List<String> rows(String text) {
         // 每个字同宽，断点只取决于字数与避头规则。
-        return strings(TauntBubbleLines.wrap(Text.literal(text), ROW_WIDTH, (codePoint, style) -> GLYPH_WIDTH));
+        return strings(TauntBubbleLines.wrap(Component.literal(text), ROW_WIDTH, (codePoint, style) -> GLYPH_WIDTH));
     }
 
-    private static List<String> strings(List<OrderedText> rows) {
+    private static List<String> strings(List<FormattedCharSequence> rows) {
         // 把行文本还原成字符串，整体比较断点。
         return rows.stream().map(TauntBubbleLinesTest::string).toList();
     }
 
-    private static String string(OrderedText row) {
+    private static String string(FormattedCharSequence row) {
         // 按码点逐字拼回，代理对字符也不会被拆开。
         var builder = new StringBuilder();
         row.accept((index, style, codePoint) -> {
@@ -103,7 +103,7 @@ public class TauntBubbleLinesTest {
         return builder.toString();
     }
 
-    private static List<Style> styles(OrderedText row) {
+    private static List<Style> styles(FormattedCharSequence row) {
         // 逐字取出样式，检查跨行后样式是否保留。
         var styles = new ArrayList<Style>();
         row.accept((index, style, codePoint) -> styles.add(style));

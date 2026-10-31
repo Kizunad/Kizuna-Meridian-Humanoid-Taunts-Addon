@@ -6,14 +6,14 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import dev.kizuna.meridian.taunts.server.Audience;
-import net.minecraft.command.EntitySelector;
-import net.minecraft.command.argument.EntityArgumentType;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.Text;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.selector.EntitySelector;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 
 /**
  * /meridian_humanoid_taunts say &lt;target&gt; [player|entity]：让目标立刻说一句，用于调试；权限 2，全部节点可补全。
@@ -23,46 +23,46 @@ final class TauntCommands {
     private static final int PERMISSION_LEVEL = 2;
     private static final String TARGET = "target";
     private static final DynamicCommandExceptionType SILENT = new DynamicCommandExceptionType(
-            name -> Text.translatable("commands.meridian_humanoid_taunts.say.silent", name));
+            name -> Component.translatable("commands.meridian_humanoid_taunts.say.silent", name));
 
     private TauntCommands() {
         // 只组装 Brigadier 节点。
     }
 
-    static LiteralArgumentBuilder<ServerCommandSource> command(TauntSpeaker speaker) {
-        LiteralArgumentBuilder<ServerCommandSource> root = CommandManager.literal(TauntsFabric.MOD_ID);
-        root.requires(source -> source.hasPermissionLevel(PERMISSION_LEVEL));
-        RequiredArgumentBuilder<ServerCommandSource, EntitySelector> target =
-                CommandManager.argument(TARGET, EntityArgumentType.entity());
+    static LiteralArgumentBuilder<CommandSourceStack> command(TauntSpeaker speaker) {
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal(TauntsFabric.MOD_ID);
+        root.requires(source -> source.hasPermission(PERMISSION_LEVEL));
+        RequiredArgumentBuilder<CommandSourceStack, EntitySelector> target =
+                Commands.argument(TARGET, EntityArgument.entity());
         target.executes(context -> say(context, speaker, defaultAudience(context.getSource())));
         for (Audience audience : Audience.values()) {
-            LiteralArgumentBuilder<ServerCommandSource> explicit = CommandManager.literal(audience.id());
+            LiteralArgumentBuilder<CommandSourceStack> explicit = Commands.literal(audience.id());
             explicit.executes(context -> say(context, speaker, audience));
             target.then(explicit);
         }
-        LiteralArgumentBuilder<ServerCommandSource> say = CommandManager.literal("say");
+        LiteralArgumentBuilder<CommandSourceStack> say = Commands.literal("say");
         say.then(target);
         root.then(say);
         return root;
     }
 
-    private static int say(CommandContext<ServerCommandSource> context, TauntSpeaker speaker, Audience audience)
+    private static int say(CommandContext<CommandSourceStack> context, TauntSpeaker speaker, Audience audience)
             throws CommandSyntaxException {
-        ServerCommandSource source = context.getSource();
-        Entity target = EntityArgumentType.getEntity(context, TARGET);
+        CommandSourceStack source = context.getSource();
+        Entity target = EntityArgument.getEntity(context, TARGET);
         if (!(target instanceof LivingEntity living) || !speaker.sayNow(living, audience, addressee(source))) {
             throw SILENT.create(target.getName());
         }
-        source.sendFeedback(() -> Text.translatable("commands.meridian_humanoid_taunts.say.success",
+        source.sendSuccess(() -> Component.translatable("commands.meridian_humanoid_taunts.say.success",
                 target.getName()), false /* broadcastToOps */);
         return 1;
     }
 
-    private static Audience defaultAudience(ServerCommandSource source) {
-        return source.getEntity() instanceof PlayerEntity ? Audience.PLAYER : Audience.ENTITY;
+    private static Audience defaultAudience(CommandSourceStack source) {
+        return source.getEntity() instanceof Player ? Audience.PLAYER : Audience.ENTITY;
     }
 
-    private static Text addressee(ServerCommandSource source) {
+    private static Component addressee(CommandSourceStack source) {
         // 实体执行者用其名字；控制台、命令方块等没有实体时用来源显示名。
         Entity executor = source.getEntity();
         if (executor == null) {

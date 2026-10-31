@@ -2,29 +2,29 @@ package dev.kizuna.meridian.taunts.fabric;
 
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.entity.Entity;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 
 /** 头顶气泡的 S2C 通道；载荷是说话者的实体网络 ID 与台词文本组件。 */
 public final class TauntChannels {
-    public static final Identifier BUBBLE = new Identifier(TauntsFabric.MOD_ID, "bubble");
+    public static final ResourceLocation BUBBLE = new ResourceLocation(TauntsFabric.MOD_ID, "bubble");
 
     private TauntChannels() {
         // 只保存通道与编码。
     }
 
-    static void sendBubble(Iterable<ServerPlayerEntity> listeners, Entity speaker, Text line) {
+    static void sendBubble(Iterable<ServerPlayer> listeners, Entity speaker, Component line) {
         // 没装本模组客户端的玩家收不到通道，只看聊天。
-        for (ServerPlayerEntity listener : listeners) {
+        for (ServerPlayer listener : listeners) {
             if (!ServerPlayNetworking.canSend(listener, BUBBLE)) {
                 continue;
             }
-            PacketByteBuf buffer = PacketByteBufs.create();
+            FriendlyByteBuf buffer = PacketByteBufs.create();
             buffer.writeVarInt(speaker.getId());
-            buffer.writeText(line);
+            buffer.writeComponent(line);
             ServerPlayNetworking.send(listener, BUBBLE, buffer);
         }
     }

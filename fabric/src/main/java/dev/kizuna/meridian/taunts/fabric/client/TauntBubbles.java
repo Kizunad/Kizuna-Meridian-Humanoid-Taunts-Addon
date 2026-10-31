@@ -1,21 +1,20 @@
 package dev.kizuna.meridian.taunts.fabric.client;
 
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextHandler;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.Entity;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Util;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.Util;
+import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.StringSplitter;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
-
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,10 +48,10 @@ final class TauntBubbles {
     private static final int NO_TEXT_BACKGROUND = 0;
     /** 与原版文字底色相同：比字形远 0.01 个字体像素，文字始终压在底色上。 */
     private static final float BACKGROUND_DEPTH = 0.01F;
-    private static final int FULL_BRIGHT = LightmapTextureManager.MAX_LIGHT_COORDINATE;
+    private static final int FULL_BRIGHT = LightTexture.FULL_BRIGHT;
     private final Map<Integer, Bubble> bubbles = new HashMap<>();
 
-    void show(int entityId, Text line, long now) {
+    void show(int entityId, Component line, long now) {
         bubbles.put(entityId, new Bubble(line, now + VISIBLE_MILLIS));
     }
 
@@ -62,50 +61,50 @@ final class TauntBubbles {
 
     void render(WorldRenderContext context) {
         // 先丢掉过期气泡；说话者已卸载的气泡保留到过期，重新进入视野时继续显示。
-        long now = Util.getMeasuringTimeMs();
+        long now = Util.getMillis();
         bubbles.values().removeIf(bubble -> bubble.expiresAt() <= now);
-        TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
+        Font textRenderer = Minecraft.getInstance().font;
         for (Map.Entry<Integer, Bubble> entry : bubbles.entrySet()) {
-            Entity speaker = context.world().getEntityById(entry.getKey());
+            Entity speaker = context.world().getEntity(entry.getKey());
             if (speaker != null) {
                 draw(context, textRenderer, speaker, entry.getValue().line());
             }
         }
     }
 
-    private static void draw(WorldRenderContext context, TextRenderer textRenderer, Entity speaker, Text line) {
+    private static void draw(WorldRenderContext context, Font textRenderer, Entity speaker, Component line) {
         // 坐标系与原版名牌一致（镜头相对、面向镜头、Y 轴向下）；原点是尾巴尖端，气泡框与文字自下而上堆在其上。
         Camera camera = context.camera();
-        Vec3d offset = speaker.getLerpedPos(context.tickDelta()).subtract(camera.getPos());
-        if (offset.lengthSquared() > MAX_DISTANCE_SQUARED) {
+        Vec3 offset = speaker.getPosition(context.tickDelta()).subtract(camera.getPosition());
+        if (offset.lengthSqr() > MAX_DISTANCE_SQUARED) {
             return;
         }
-        List<OrderedText> rows = rows(line, textRenderer);
+        List<FormattedCharSequence> rows = rows(line, textRenderer);
         int widest = 0;
-        for (OrderedText row : rows) {
-            widest = Math.max(widest, textRenderer.getWidth(row));
+        for (FormattedCharSequence row : rows) {
+            widest = Math.max(widest, textRenderer.width(row));
         }
         float halfWidth = widest / 2.0F + PADDING;
         int textHeight = (rows.size() - 1) * LINE_HEIGHT + GLYPH_HEIGHT;
         int bottom = -TAIL_HALF_WIDTHS.length;
         int top = bottom - textHeight - 2 * PADDING;
-        MatrixStack matrices = context.matrixStack();
-        matrices.push();
-        matrices.translate(offset.x, offset.y + speaker.getHeight() + HEAD_CLEARANCE, offset.z);
-        matrices.multiply(camera.getRotation());
+        PoseStack matrices = context.matrixStack();
+        matrices.pushPose();
+        matrices.translate(offset.x, offset.y + speaker.getBbHeight() + HEAD_CLEARANCE, offset.z);
+        matrices.mulPose(camera.rotation());
         matrices.scale(-SCALE, -SCALE, SCALE);
-        Matrix4f position = matrices.peek().getPositionMatrix();
-        VertexConsumer background = context.consumers().getBuffer(RenderLayer.getTextBackground());
+        Matrix4f position = matrices.last().pose();
+        VertexConsumer background = context.consumers().getBuffer(RenderType.textBackground());
         drawShape(background, position, halfWidth, top, bottom);
         drawRows(context, textRenderer, position, rows, top + PADDING);
-        matrices.pop();
+        matrices.popPose();
     }
 
-    static List<OrderedText> rows(Text line, TextRenderer textRenderer) {
+    static List<FormattedCharSequence> rows(Component line, Font textRenderer) {
         // 按 120 像素折行并守避头规则；单字宽度与原版折行一样按字形和样式量。
-        TextHandler handler = textRenderer.getTextHandler();
+        StringSplitter handler = textRenderer.getSplitter();
         return TauntBubbleLines.wrap(line, MAX_WIDTH,
-                (codePoint, style) -> handler.getWidth(OrderedText.styled(codePoint, style)));
+                (codePoint, style) -> handler.stringWidth(FormattedCharSequence.codepoint(codePoint, style)));
     }
 
     private static void drawShape(VertexConsumer buffer, Matrix4f position, float halfWidth, int top, int bottom) {
@@ -134,20 +133,20 @@ final class TauntBubbles {
     private static void corner(VertexConsumer buffer, Matrix4f position, float x, float y) {
         buffer.vertex(position, x, y, BACKGROUND_DEPTH)
                 .color(BACKGROUND_COLOR)
-                .light(FULL_BRIGHT)
-                .next();
+                .uv2(FULL_BRIGHT)
+                .endVertex();
     }
 
-    private static void drawRows(WorldRenderContext context, TextRenderer textRenderer, Matrix4f position,
-            List<OrderedText> rows, int top) {
+    private static void drawRows(WorldRenderContext context, Font textRenderer, Matrix4f position,
+            List<FormattedCharSequence> rows, int top) {
         // 每行各自居中，行距与原折行一致。
         for (int row = 0; row < rows.size(); row++) {
-            OrderedText text = rows.get(row);
-            float left = -textRenderer.getWidth(text) / 2.0F;
-            textRenderer.draw(text, left, top + row * LINE_HEIGHT, TEXT_COLOR, false /* shadow */, position,
-                    context.consumers(), TextRenderer.TextLayerType.NORMAL, NO_TEXT_BACKGROUND, FULL_BRIGHT);
+            FormattedCharSequence text = rows.get(row);
+            float left = -textRenderer.width(text) / 2.0F;
+            textRenderer.drawInBatch(text, left, top + row * LINE_HEIGHT, TEXT_COLOR, false /* shadow */, position,
+                    context.consumers(), Font.DisplayMode.NORMAL, NO_TEXT_BACKGROUND, FULL_BRIGHT);
         }
     }
 
-    private record Bubble(Text line, long expiresAt) { }
+    private record Bubble(Component line, long expiresAt) { }
 }

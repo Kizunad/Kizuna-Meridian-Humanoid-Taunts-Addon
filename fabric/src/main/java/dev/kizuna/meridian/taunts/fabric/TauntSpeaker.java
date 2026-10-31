@@ -8,19 +8,18 @@ import dev.kizuna.meridian.taunts.server.TauntLine;
 import dev.kizuna.meridian.taunts.server.TauntMemory;
 import dev.kizuna.meridian.taunts.server.TauntSettings;
 import dev.kizuna.meridian.vanilla.fabric.VanillaDamageFabric;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.WeakHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 
 /**
  * 生人受击发言：Threatening 认领、台词表里有的物种才开口；攻击者是玩家对玩家说，是其他生物对生物说。
@@ -49,14 +48,14 @@ final class TauntSpeaker {
         if (taunts.isEmpty()) {
             return;
         }
-        if (memory(speaker).coolingDown(speaker.getWorld().getTime(), settings.cooldownTicks())) {
+        if (memory(speaker).coolingDown(speaker.level().getGameTime(), settings.cooldownTicks())) {
             return;
         }
-        Audience audience = attacker instanceof PlayerEntity ? Audience.PLAYER : Audience.ENTITY;
+        Audience audience = attacker instanceof Player ? Audience.PLAYER : Audience.ENTITY;
         say(speaker, taunts.get().lines(audience), audience, attacker.getName());
     }
 
-    boolean sayNow(LivingEntity speaker, Audience audience, Text addressee) {
+    boolean sayNow(LivingEntity speaker, Audience audience, Component addressee) {
         // 调试入口：不看冷却与死活，但同样记入冷却和最近台词。没有台词的实体返回 false。
         Optional<SpeciesTaunts> taunts = taunts(speaker);
         if (taunts.isEmpty()) {
@@ -68,7 +67,7 @@ final class TauntSpeaker {
 
     private Optional<SpeciesTaunts> taunts(Entity entity) {
         // 只有 Threatening 认领的物种才有类人身体；台词表里没有的物种不开口。
-        String entityId = Registries.ENTITY_TYPE.getId(entity.getType()).toString();
+        String entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
         if (HumanoidSpecies.fromEntityId(entityId).isEmpty()) {
             return Optional.empty();
         }
@@ -79,17 +78,17 @@ final class TauntSpeaker {
         return memories.computeIfAbsent(speaker, ignored -> new TauntMemory());
     }
 
-    private void say(LivingEntity speaker, List<TauntLine> lines, Audience audience, Text addressee) {
+    private void say(LivingEntity speaker, List<TauntLine> lines, Audience audience, Component addressee) {
         // 抽一句并记下，再把同一句发给 16 格内的玩家：聊天与气泡各自受开关控制。
-        long tick = speaker.getWorld().getTime();
+        long tick = speaker.level().getGameTime();
         int index = memory(speaker).speak(audience, lines.size(), ThreadLocalRandom.current(), tick);
-        Text line = TauntTexts.line(lines.get(index), addressee);
-        List<ServerPlayerEntity> listeners = ((ServerWorld) speaker.getWorld()).getPlayers(
-                player -> player.squaredDistanceTo(speaker) <= LISTEN_RADIUS_SQUARED);
+        Component line = TauntTexts.line(lines.get(index), addressee);
+        List<ServerPlayer> listeners = ((ServerLevel) speaker.level()).getPlayers(
+                player -> player.distanceToSqr(speaker) <= LISTEN_RADIUS_SQUARED);
         if (settings.chat()) {
-            Text message = TauntTexts.chat(speaker.getName(), line);
-            for (ServerPlayerEntity listener : listeners) {
-                listener.sendMessage(message, false /* overlay */);
+            Component message = TauntTexts.chat(speaker.getName(), line);
+            for (ServerPlayer listener : listeners) {
+                listener.displayClientMessage(message, false /* overlay */);
             }
         }
         if (settings.bubble()) {

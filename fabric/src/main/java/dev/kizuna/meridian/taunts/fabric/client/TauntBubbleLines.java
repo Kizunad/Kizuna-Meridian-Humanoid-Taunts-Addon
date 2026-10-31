@@ -1,12 +1,11 @@
 package dev.kizuna.meridian.taunts.fabric.client;
 
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.util.FormattedCharSequence;
 
 /**
  * 气泡折行：逐字按宽度填满一行（与原版无空格时的断法相同），再按避头尾规则调整断点：
@@ -26,7 +25,7 @@ final class TauntBubbleLines {
         // 纯计算，不持有状态。
     }
 
-    static List<OrderedText> wrap(Text line, float maxWidth, GlyphWidth width) {
+    static List<FormattedCharSequence> wrap(Component line, float maxWidth, GlyphWidth width) {
         // 先摊平成带样式的单字，按断点切行；每个字保留原样式，名字组件的样式不丢。
         List<Glyph> glyphs = glyphs(line);
         int[] codePoints = new int[glyphs.size()];
@@ -36,7 +35,7 @@ final class TauntBubbleLines {
             codePoints[index] = glyph.codePoint();
             widths[index] = width.of(glyph.codePoint(), glyph.style());
         }
-        var rows = new ArrayList<OrderedText>();
+        var rows = new ArrayList<FormattedCharSequence>();
         int start = 0;
         for (int end : rowEnds(codePoints, widths, maxWidth)) {
             rows.add(row(glyphs.subList(start, end)));
@@ -114,7 +113,7 @@ final class TauntBubbleLines {
         return !noLineStart(after) && !noLineEnd(before) && !splitsWord;
     }
 
-    private static List<Glyph> glyphs(Text line) {
+    private static List<Glyph> glyphs(Component line) {
         // 翻译组件在这里按客户端语言解析，与原版折行看到的文字一致。
         var glyphs = new ArrayList<Glyph>();
         line.visit((style, segment) -> {
@@ -124,13 +123,13 @@ final class TauntBubbleLines {
         return glyphs;
     }
 
-    private static OrderedText row(List<Glyph> glyphs) {
+    private static FormattedCharSequence row(List<Glyph> glyphs) {
         // 逐字拼回带样式的行文本，绘制与量宽都按它进行。
-        var parts = new ArrayList<OrderedText>();
+        var parts = new ArrayList<FormattedCharSequence>();
         for (Glyph glyph : glyphs) {
-            parts.add(OrderedText.styled(glyph.codePoint(), glyph.style()));
+            parts.add(FormattedCharSequence.codepoint(glyph.codePoint(), glyph.style()));
         }
-        return OrderedText.concat(parts);
+        return FormattedCharSequence.composite(parts);
     }
 
     /** 单字宽度，单位为字体像素；渲染时由字体量出，测试里用固定宽度。 */
