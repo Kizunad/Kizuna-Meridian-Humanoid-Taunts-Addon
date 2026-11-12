@@ -85,8 +85,7 @@ final class TauntBubbles {
             float partialTick = context.deltaTracker().getGameTimeDeltaPartialTick(ignoreFrozenGame);
             Vec3 position = speaker.getPosition(partialTick);
             if (position.distanceToSqr(camera) <= MAX_DISTANCE_SQUARED) {
-                List<FormattedCharSequence> rows = rows(entry.getValue().line(), textRenderer);
-                states.add(new BubbleState(position, speaker.getBbHeight(), rows));
+                states.add(new BubbleState(position, speaker.getBbHeight(), entry.getValue().layout(textRenderer)));
             }
         }
         context.levelState().setData(EXTRACTED, List.copyOf(states));
@@ -98,22 +97,17 @@ final class TauntBubbles {
         if (states == null) {
             return;
         }
-        Font textRenderer = Minecraft.getInstance().font;
         CameraRenderState camera = context.levelState().cameraRenderState;
         for (BubbleState state : states) {
-            draw(context.poseStack(), context.submitNodeCollector(), camera, textRenderer, state);
+            draw(context.poseStack(), context.submitNodeCollector(), camera, state);
         }
     }
 
     private static void draw(PoseStack matrices, SubmitNodeCollector collector, CameraRenderState camera,
-            Font textRenderer, BubbleState state) {
+            BubbleState state) {
         // 坐标系与 26.2 原版名牌一致（镜头相对、面向镜头、Y 轴向下）；原点是尾巴尖端，气泡框与文字自下而上堆在其上。
-        List<FormattedCharSequence> rows = state.rows();
-        int widest = 0;
-        for (FormattedCharSequence row : rows) {
-            widest = Math.max(widest, textRenderer.width(row));
-        }
-        float halfWidth = widest / 2.0F + PADDING;
+        List<FormattedCharSequence> rows = state.layout().rows();
+        float halfWidth = state.layout().widest() / 2.0F + PADDING;
         int textHeight = (rows.size() - 1) * LINE_HEIGHT + GLYPH_HEIGHT;
         int bottom = -TAIL_HALF_WIDTHS.length;
         int top = bottom - textHeight - 2 * PADDING;
@@ -124,7 +118,7 @@ final class TauntBubbles {
         matrices.scale(SCALE, -SCALE, SCALE);
         collector.submitCustomGeometry(matrices, RenderTypes.textBackground(),
                 (pose, background) -> drawShape(background, pose, halfWidth, top, bottom));
-        drawRows(matrices, collector, textRenderer, rows, top + PADDING);
+        drawRows(matrices, collector, state.layout(), top + PADDING);
         matrices.popPose();
     }
 
@@ -166,19 +160,50 @@ final class TauntBubbles {
                 .setLight(FULL_BRIGHT);
     }
 
-    private static void drawRows(PoseStack matrices, SubmitNodeCollector collector, Font textRenderer,
-            List<FormattedCharSequence> rows, int top) {
+    private static void drawRows(PoseStack matrices, SubmitNodeCollector collector, Layout layout, int top) {
         // 每行各自居中，行距与原折行一致。
+        List<FormattedCharSequence> rows = layout.rows();
         for (int row = 0; row < rows.size(); row++) {
             FormattedCharSequence text = rows.get(row);
-            float left = -textRenderer.width(text) / 2.0F;
+            float left = -layout.widths()[row] / 2.0F;
             collector.submitText(matrices, left, top + row * LINE_HEIGHT, text, false /* shadow */,
                     Font.DisplayMode.NORMAL, FULL_BRIGHT, TEXT_COLOR, NO_TEXT_BACKGROUND, NO_OUTLINE);
         }
     }
 
-    private record Bubble(Component line, long expiresAt) { }
+    /** 一条气泡；折行和各行宽度在第一次要画时算好，之后每帧复用，一句话只显示几秒，期间不随资源重载重排。 */
+    private static final class Bubble {
+        private final Component line;
+        private final long expiresAt;
+        private Layout layout;
 
-    /** 一帧里要画的气泡：说话者插值后的脚下位置、碰撞箱高度与折好的行。 */
-    private record BubbleState(Vec3 position, float height, List<FormattedCharSequence> rows) { }
+        Bubble(Component line, long expiresAt) {
+            this.line = line;
+            this.expiresAt = expiresAt;
+        }
+
+        long expiresAt() {
+            return expiresAt;
+        }
+
+        Layout layout(Font textRenderer) {
+            if (layout == null) {
+                List<FormattedCharSequence> rows = rows(line, textRenderer);
+                int[] widths = new int[rows.size()];
+                int widest = 0;
+                for (int row = 0; row < widths.length; row++) {
+                    widths[row] = textRenderer.width(rows.get(row));
+                    widest = Math.max(widest, widths[row]);
+                }
+                layout = new Layout(rows, widths, widest);
+            }
+            return layout;
+        }
+    }
+
+    /** 折好的行、各行宽度和最宽一行的宽度，单位为字体像素。 */
+    private record Layout(List<FormattedCharSequence> rows, int[] widths, int widest) { }
+
+    /** 一帧里要画的气泡：说话者插值后的脚下位置、碰撞箱高度与排好的文字。 */
+    private record BubbleState(Vec3 position, float height, Layout layout) { }
 }
