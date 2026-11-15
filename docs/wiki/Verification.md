@@ -44,8 +44,17 @@ git diff --check
 
 ## Xvfb 客户端测试（`fabric/src/clientTest`）
 
-单人世界中由服务端线程在玩家视线正前方 5 格生成关掉 AI 的村民，并以玩家攻击打它一下；
-聊天与气泡都经正式网络路径到达客户端。任务启动前在运行目录写入 `options.txt`（`lang:zh_cn`），客户端以简体中文启动：
+任务启动前在运行目录写入 `options.txt`（`lang:zh_cn`），客户端以简体中文启动。
+
+先拍出身卡（`OriginCardShots`）：完整装配里有 Threatening 的首批五个出身，进服时出身附属会自己弹出选出身的界面，
+挡住后面的截图，所以第一段就等它弹出（30 秒内不弹算失败），画过一秒后截候选总览 `origin-offer.png`；
+然后按灭门遗孤、药铺学徒、罪臣之后、行商之后、寻常农户的顺序，各用 `meridian debug origin set <玩家> meridian_humanoid:<出身>`
+定一次，再由玩家执行 `meridian body origin` 打开选定后只读的那一张，各截一张 `origin-<出身>.png`；
+每张对应的出身名字（简体中文译文）写在 `origins.txt`。最后定的是寻常农户，没有仇家，后面风声招来的那一场不受打扰。
+Taunts 不编译依赖出身附属，界面按类名认。
+
+接着在单人世界中由服务端线程在玩家视线正前方 5 格生成关掉 AI 的村民，并以玩家攻击打它一下；
+聊天与气泡都经正式网络路径到达客户端：
 
 - 收到以「<村民> 」开头的聊天，整行浅灰色，含玩家名，没有残留 `{attacker}` 或 `entity.minecraft.` 翻译键，文本另存为 `chat.txt`；
 - 聊天到达 20 tick 后截图 `bubble-visible.png`，3.5 秒时截图 `bubble-late.png`，4 秒加 250 毫秒后截图 `bubble-hidden.png`；
@@ -66,7 +75,10 @@ git diff --check
     认出头目，转头看着它；它走进 12 格内（或者等满 20 秒）时关掉 HUD（免得聊天挡住来人），一秒后截图 `crisis-raiders.png`。
     再打开 HUD，头目要是走进准星，再截一张头顶带名号的 `crisis-leader.png`；
     它一直不近身也不算失败。
-  - 客户端看到的这几段文字都写在 `crisis.txt`。
+  - 最后拍一张出身仇家的字条：`kill` 清掉玩家和村民以外的实体（头目一死这一场就算打赢了结，床上前一张字条也一起清掉），
+    再用 `omen <玩家> meridian_humanoid:clan_foes`（灭门遗孤的仇家那张队伍表）给征兆，直到床上出现正文头一行是
+    `crisis.meridian_humanoid.clan_foes.omen.note.1` 译文的字条；核对同上，截图 `crisis-foe-note.png`。
+  - 客户端看到的这几段文字都写在 `crisis.txt`（贪卷那伙人的字条记 `note=`，仇家的记 `foe_note=`）。
 
 ## 最近一次结果（2026-10-30）
 

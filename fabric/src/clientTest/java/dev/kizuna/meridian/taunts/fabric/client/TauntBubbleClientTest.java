@@ -36,12 +36,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
 
 /**
+ * 先接 {@link OriginCardShots}：进服弹出的选出身界面截一张总览，首批五个出身各截一张选定后的出身卡，再合上界面。
  * 单人世界里由服务端线程让玩家打一个关掉 AI 的村民，经正式聊天包与气泡包驱动客户端：
  * 聊天按简体中文解析后应是浅灰色的「<村民> …玩家名…」；气泡出现后与 3.5 秒时各截一张图，
  * 4 秒后再截一张，画面中上部的像素差证明气泡确实画出、仍在且按时消失，变化区域的轮廓证明它是圆角加尾巴的气泡。
  * 最后用真实字体检查整张台词表的折行（标点不落行首、开引号不留行尾、名字不拆开），
  * 再经正式气泡通道给同一村民依次换上两句原版会折错的台词，各截一张图。
- * 最后接 {@link CrisisOmenShots}：经 Threatening 招敌的调试指令让同一村民说传言、在床上留字条、叫来一伙人，各截图。
+ * 最后接 {@link CrisisOmenShots}：经 Threatening 招敌的调试指令让同一村民说传言、在床上留字条、叫来一伙人，
+ * 再留一张出身仇家的字条，各截图。
  */
 public final class TauntBubbleClientTest implements ClientModInitializer {
     private static final int READY_TICKS = 60;
@@ -88,7 +90,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     private static final String WRAP_SHOT = "bubble-wrap.png";
     private static final String NAME_SHOT = "bubble-wrap-name.png";
     private final List<Component> messages = new CopyOnWriteArrayList<>();
-    private Stage stage = Stage.WAITING;
+    private Stage stage = Stage.ORIGINS;
     private int ticks;
     private int heardTick;
     private int wrapTick;
@@ -102,8 +104,9 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     private NativeImage lateImage;
     private NativeImage hiddenImage;
     private CrisisOmenShots crisis;
+    private OriginCardShots origins;
 
-    private enum Stage { WAITING, STRIKING, SETTLING, SHOWN, LATE, WRAPPING, CAPTURING, CRISIS, DONE }
+    private enum Stage { ORIGINS, WAITING, STRIKING, SETTLING, SHOWN, LATE, WRAPPING, CAPTURING, CRISIS, DONE }
 
     @Override
     public void onInitializeClient() {
@@ -133,6 +136,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         }
         try {
             switch (stage) {
+                case ORIGINS -> awaitOrigins(client);
                 case WAITING -> start(client);
                 case STRIKING -> awaitChat(client);
                 case SETTLING -> awaitSettled(client);
@@ -145,6 +149,25 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
         } catch (Exception failure) {
             finish(failure.toString());
         }
+    }
+
+    private void awaitOrigins(Minecraft client) {
+        // 选出身的界面会挡住后面的截图：先把它拍完、合上。失焦不暂停、不画云，和后面的截图一致。
+        if (origins == null) {
+            client.options.pauseOnLostFocus = false;
+            client.options.cloudStatus().set(CloudStatus.OFF);
+            origins = new OriginCardShots(client.player.getGameProfile().name(), this::originsDone);
+        }
+        origins.tick(client);
+    }
+
+    private void originsDone(String failure) {
+        // 出身卡拍完接着拍气泡；失败就照常写报告。
+        if (failure != null) {
+            finish("出身卡截图：" + failure);
+            return;
+        }
+        stage = Stage.WAITING;
     }
 
     private void start(Minecraft client) throws Exception {
@@ -306,6 +329,9 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
 
     private String where() {
         // 超时报告：停在哪一段，走到招敌截图时再带上它停在哪一段。
+        if (stage == Stage.ORIGINS && origins != null) {
+            return stage + "/" + origins.phase();
+        }
         if (crisis == null) {
             return stage.name();
         }

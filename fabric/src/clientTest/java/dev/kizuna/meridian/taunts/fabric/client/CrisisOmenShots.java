@@ -42,6 +42,7 @@ import org.slf4j.LoggerFactory;
  * 接在气泡截图后面，经 Threatening 招敌的调试指令走一遍征兆和来人，用真客户端截图：
  * 气泡用例里那个村民对玩家说第一句传言（气泡和浅灰色聊天，文字按简体中文从 Threatening 的语言文件解析）；
  * 床上留下的字条和它的悬停说明（名字、三行字）；叫来的一伙人，以及头目走进准星时头顶的名号。
+ * 最后清掉这伙人（头目一死这一场就打赢了结），用 omen 指定灭门遗孤的仇家那张队伍表，再拍一张仇家的字条。
  * 截图写进 {@code bubble-screens/crisis-*.png}，客户端看到的文字写进 {@code crisis.txt}。
  */
 final class CrisisOmenShots {
@@ -60,6 +61,11 @@ final class CrisisOmenShots {
     private static final double BED_DISTANCE = 2.0;
     private static final double NOTE_RADIUS = 3.0;
     private static final float NOTE_PITCH = 25.0F;
+    // 两张字条：风声招来的贪卷那伙人照常排；灭门遗孤的仇家在 omen 后面指定队伍表排。
+    private static final NoteStep COVETOUS_NOTE = new NoteStep("meridian_humanoid:covetous", "", "note",
+            "crisis-note.png", Phase.STRIKE);
+    private static final NoteStep FOE_NOTE = new NoteStep("meridian_humanoid:clan_foes",
+            " meridian_humanoid:clan_foes", "foe_note", "crisis-foe-note.png", Phase.DONE);
     private static final double RAIDERS_NEAR = 12.0;
     private static final double RAIDERS_RADIUS = 64.0;
     private static final int RAIDERS_FALLBACK_TICKS = 400;
@@ -79,8 +85,15 @@ final class CrisisOmenShots {
     private BlockPos bed;
     private Mob leader;
     private ItemEntity noteItem;
+    private NoteStep noteStep = COVETOUS_NOTE;
 
-    private enum Phase { RUMOR, RUMOR_HEARD, NOTE, NOTE_SHOWN, NOTE_FACING, STRIKE, RAIDERS, LEADER, CAPTURING, DONE }
+    private enum Phase {
+        RUMOR, RUMOR_HEARD, NOTE, NOTE_SHOWN, NOTE_FACING, STRIKE, RAIDERS, LEADER, FOE_CLEAR, CAPTURING, DONE
+    }
+
+    private record NoteStep(String party, String omenSuffix, String label, String shot, Phase after) {
+        // 一张字条：哪张队伍表的、omen 后面接什么、记进文字记录的名目、截成哪张、截完去哪一段。
+    }
 
     CrisisOmenShots(List<Component> messages, String playerName, Consumer<String> done) {
         // 聊天由气泡用例统一收着；做完或失败都交回气泡用例写报告。
@@ -110,6 +123,7 @@ final class CrisisOmenShots {
                 case STRIKE -> awaitStrike(client);
                 case RAIDERS -> awaitRaiders(client);
                 case LEADER -> awaitLeader(client);
+                case FOE_CLEAR -> awaitFoeClear(client);
                 default -> throw new IllegalStateException(phase.name());
             }
         } catch (Exception failure) {
@@ -183,7 +197,7 @@ final class CrisisOmenShots {
             throw new IllegalStateException("给了 " + NOTE_TRIES + " 次征兆，床上还是没有字条");
         }
         markTick = ticks;
-        command = run(client, "meridian humanoid crisis omen " + playerName);
+        command = run(client, "meridian humanoid crisis omen " + playerName + noteStep.omenSuffix());
     }
 
     private void awaitTooltip(Minecraft client) throws Exception {
@@ -193,7 +207,7 @@ final class CrisisOmenShots {
         }
         ItemStack stack = ((NoteTooltip) client.gui.screen()).note;
         List<String> lines = Screen.getTooltipFromItem(client, stack).stream().map(Component::getString).toList();
-        note("note=" + String.join(" / ", lines));
+        note(noteStep.label() + "=" + String.join(" / ", lines));
         String name = Language.getInstance().getOrDefault(NOTE_KEY);
         if (lines.size() != NOTE_LINES || !lines.getFirst().equals(name) || name.equals(NOTE_KEY)
                 || lines.stream().anyMatch(line -> line.startsWith(KEY_PREFIX))) {
@@ -207,7 +221,7 @@ final class CrisisOmenShots {
     private void awaitFacing(Minecraft client) {
         // 掉落物一直在转，侧对镜头时只看得见一条锯齿边；等纸面转到对着镜头再截（转一圈 126 tick，等不到也照截）。
         if (facing(client) || ticks - markTick > FACING_TICKS) {
-            capture(client, "crisis-note.png", Phase.STRIKE);
+            capture(client, noteStep.shot(), noteStep.after());
         }
     }
 
@@ -234,6 +248,7 @@ final class CrisisOmenShots {
         if (command.join() <= COMMAND_FAILED) {
             throw new IllegalStateException("strike 指令没叫来人");
         }
+        command = null;
         markTick = ticks;
         phase = Phase.RAIDERS;
     }
@@ -270,14 +285,33 @@ final class CrisisOmenShots {
         }
         if (leader.isRemoved() || ticks - markTick > LEADER_TICKS) {
             note("leader_tag=没走进准星");
-            finish(null);
+            phase = Phase.FOE_CLEAR;
             return;
         }
         client.player.lookAt(EntityAnchorArgument.Anchor.EYES, leader.getEyePosition());
         if (client.crosshairPickEntity == leader) {
             note("leader_tag=在准星里");
-            capture(client, "crisis-leader.png", Phase.DONE);
+            capture(client, "crisis-leader.png", Phase.FOE_CLEAR);
         }
+    }
+
+    private void awaitFoeClear(Minecraft client) {
+        // 清掉这伙人和床上前一张字条（村民留着说传言）：头目一死这一场就打赢了结，才排得上仇家那一场。
+        if (command == null) {
+            command = run(client, "kill @e[type=!minecraft:player,type=!minecraft:villager]");
+            return;
+        }
+        if (!command.isDone()) {
+            return;
+        }
+        if (command.join() <= COMMAND_FAILED) {
+            throw new IllegalStateException("kill 一个也没清掉");
+        }
+        command = null;
+        tries = 0;
+        markTick = ticks;
+        noteStep = FOE_NOTE;
+        phase = Phase.NOTE;
     }
 
     private Optional<Mob> leader(Minecraft client) {
@@ -301,11 +335,20 @@ final class CrisisOmenShots {
     }
 
     private Optional<ItemEntity> noteOnBed(Minecraft client) {
-        // 床上那一格附近、名字是「字条」译文的掉落物。
+        // 床上那一格附近、名字是「字条」译文、正文头一行是这张队伍表那一行译文的掉落物。
         String name = Language.getInstance().getOrDefault(NOTE_KEY);
+        String first = Language.getInstance().getOrDefault(noteKey(noteStep.party(), 1));
         AABB around = new AABB(bed).inflate(NOTE_RADIUS);
-        return client.level.getEntitiesOfClass(ItemEntity.class, around,
-                item -> item.getItem().getHoverName().getString().equals(name)).stream().findFirst();
+        return client.level.getEntitiesOfClass(ItemEntity.class, around, item -> {
+            List<Component> lines = Screen.getTooltipFromItem(client, item.getItem());
+            return lines.size() > 1 && lines.get(0).getString().equals(name) && lines.get(1).getString().equals(first);
+        }).stream().findFirst();
+    }
+
+    private static String noteKey(String party, int line) {
+        // Threatening 由队伍表推字条正文的键：crisis.<命名空间>.<名字>.omen.note.<第几行>。
+        String[] parts = party.split(":", 2);
+        return KEY_PREFIX + parts[0] + "." + parts[1] + ".omen.note." + line;
     }
 
     private static BlockPos placeBed(ServerPlayer player) {
@@ -326,7 +369,7 @@ final class CrisisOmenShots {
         return client.getSingleplayerServer().getPlayerList().getPlayer(client.player.getUUID());
     }
 
-    private static CompletableFuture<Integer> run(Minecraft client, String command) {
+    static CompletableFuture<Integer> run(Minecraft client, String command) {
         // 在服务端线程用服务器的最高权限来源直接交给指令树执行：返回值就是结果，指令里抛的异常原样传回来
         // （正式入口会把异常吞成一句「意外错误」）。
         MinecraftServer server = client.getSingleplayerServer();
