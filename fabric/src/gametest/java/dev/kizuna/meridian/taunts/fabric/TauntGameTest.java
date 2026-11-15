@@ -4,6 +4,7 @@ import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestion;
+import dev.kizuna.meridian.humanoid.fabric.HumanoidSpeech;
 import dev.kizuna.meridian.taunts.server.Audience;
 import dev.kizuna.meridian.taunts.server.SpeciesTaunts;
 import dev.kizuna.meridian.taunts.server.TauntCatalog;
@@ -57,6 +58,7 @@ public final class TauntGameTest {
     private static final int COOLDOWN_TICK_LIMIT = COOLDOWN_TICKS + 40;
     private static final PermissionSet COMMAND_PERMISSIONS = LevelBasedPermissionSet.GAMEMASTER;
     private static final String TAUNT = "meridian humanoid " + TauntCommands.NODE + " ";
+    private static final String CRISIS_LINE = "crisis.meridian_humanoid.covetous.omen.rumor.1";
     private static final TauntCatalog CATALOG = TauntCatalog.parse(TauntsFabric.catalogText(LANGUAGE));
 
     @GameTest(maxTicks = DEFAULT_TIMEOUT, environment = "meridian_humanoid_taunts_test:taunts_player")
@@ -169,6 +171,32 @@ public final class TauntGameTest {
             context.assertTrue(dispatcher.getRoot().getChild(TauntsFabric.MOD_ID) == null, "旧根 /" + TauntsFabric.MOD_ID + " 应已删除");
         } finally {
             leave(context, operator);
+        }
+        context.succeed();
+    }
+
+    @GameTest(maxTicks = DEFAULT_TIMEOUT, environment = "meridian_humanoid_taunts_test:taunts_speech")
+    public void crisisSpeechIsRelayedAsGrayChat(GameTestHelper context) {
+        // Threatening 招敌说话的事件：写好的那一句原样发出，16 格内的人和对着说的那名玩家都收得到，再远的收不到；不记冷却。
+        LivingEntity villager = humanoid(context, EntityTypes.VILLAGER);
+        Listener bystander = listener(context, "SpeechBystander", villager, NEAR);
+        Listener addressee = listener(context, "SpeechAddressee", villager, OUT_OF_RANGE);
+        Listener outsider = listener(context, "SpeechOutsider", villager, -OUT_OF_RANGE);
+        Component rumor = Component.translatable(CRISIS_LINE);
+        try {
+            HumanoidSpeech.SPOKE.invoker().spoke(villager, addressee, rumor);
+            for (Listener heard : List.of(bystander, addressee)) {
+                Component chat = onlyChat(context, heard, heard.getScoreboardName());
+                context.assertTrue(line(chat).equals(rumor) && speaker(chat).equals(villager.getName()),
+                        "招敌那句应原样由村民说出：" + chat);
+                context.assertTrue(TextColor.fromLegacyFormat(ChatFormatting.GRAY).equals(chat.getStyle().getColor()),
+                        "招敌那句也是浅灰色");
+            }
+            context.assertTrue(chats(outsider).isEmpty(), "17 格外、不是对着说的玩家不应收到");
+            villager.hurtServer(context.getLevel(), villager.damageSources().playerAttack(bystander), LIGHT_HIT);
+            context.assertTrue(chats(bystander).size() == 2, "招敌那句不该让村民进冷却");
+        } finally {
+            leave(context, bystander, addressee, outsider);
         }
         context.succeed();
     }

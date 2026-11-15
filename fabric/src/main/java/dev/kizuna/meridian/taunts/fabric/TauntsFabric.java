@@ -1,5 +1,6 @@
 package dev.kizuna.meridian.taunts.fabric;
 
+import dev.kizuna.meridian.humanoid.fabric.HumanoidSpeech;
 import dev.kizuna.meridian.taunts.server.TauntCatalog;
 import dev.kizuna.meridian.taunts.server.TauntSettings;
 import dev.kizuna.meridian.vanilla.fabric.VanillaDamageFabric;
@@ -24,6 +25,8 @@ public final class TauntsFabric implements ModInitializer {
         TauntCatalog catalog = TauntCatalog.parse(catalogText(settings.language()));
         TauntSpeaker speaker = new TauntSpeaker(settings, catalog);
         VanillaDamageFabric.registerDamageObserver(speaker::onDamage);
+        // 招敌的传言和记仇的人认出玩家的那句由 Threatening 发事件，这里照常发聊天和气泡。
+        HumanoidSpeech.SPOKE.register(speaker::onSpoke);
         TauntCommands.register(speaker);
         // 气泡包的类型在 26.2 要先登记编解码，客户端才能收到。
         PayloadTypeRegistry.clientboundPlay().register(BubblePayload.TYPE, BubblePayload.CODEC);

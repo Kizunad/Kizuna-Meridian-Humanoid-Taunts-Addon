@@ -8,6 +8,7 @@ import dev.kizuna.meridian.taunts.server.TauntLine;
 import dev.kizuna.meridian.taunts.server.TauntMemory;
 import dev.kizuna.meridian.taunts.server.TauntSettings;
 import dev.kizuna.meridian.vanilla.fabric.VanillaDamageFabric;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,7 +24,8 @@ import net.minecraft.world.entity.player.Player;
 
 /**
  * 生人受击发言：Threatening 认领、台词表里有的物种才开口；攻击者是玩家对玩家说，是其他生物对生物说。
- * 没有生物攻击者、打自己、致死一击和冷却中都不说。只在服务端线程调用。
+ * 没有生物攻击者、打自己、致死一击和冷却中都不说。Threatening 招敌里生人对玩家说的写好的话也从这里发出去。
+ * 只在服务端线程调用。
  */
 final class TauntSpeaker {
     static final double LISTEN_RADIUS = 16.0;
@@ -78,14 +80,32 @@ final class TauntSpeaker {
         return memories.computeIfAbsent(speaker, ignored -> new TauntMemory());
     }
 
+    void onSpoke(LivingEntity speaker, ServerPlayer addressee, Component line) {
+        // Threatening 招敌里生人对玩家说的写好的话（传言、记仇的人认出玩家）：不抽台词、不看也不记冷却；
+        // 照样发给 16 格内的玩家，对着说的那名玩家不在 16 格内也收得到。
+        List<ServerPlayer> listeners = new ArrayList<>(listeners(speaker));
+        if (!listeners.contains(addressee)) {
+            listeners.add(addressee);
+        }
+        broadcast(speaker, line, listeners);
+    }
+
     private void say(LivingEntity speaker, List<TauntLine> lines, Audience audience, Component addressee) {
-        // 抽一句并记下，再把同一句发给 16 格内的玩家：聊天与气泡各自受开关控制。
-        // 聊天走 26.2 的系统消息入口，与 1.20.1 的 displayClientMessage(…, false) 是同一条路径。
+        // 抽一句并记下，再把同一句发给 16 格内的玩家。
         long tick = speaker.level().getGameTime();
         int index = memory(speaker).speak(audience, lines.size(), ThreadLocalRandom.current(), tick);
-        Component line = TauntTexts.line(lines.get(index), addressee);
-        List<ServerPlayer> listeners = ((ServerLevel) speaker.level()).getPlayers(
+        broadcast(speaker, TauntTexts.line(lines.get(index), addressee), listeners(speaker));
+    }
+
+    private static List<ServerPlayer> listeners(LivingEntity speaker) {
+        // 说话者 16 格内的玩家。
+        return ((ServerLevel) speaker.level()).getPlayers(
                 player -> player.distanceToSqr(speaker) <= LISTEN_RADIUS_SQUARED);
+    }
+
+    private void broadcast(LivingEntity speaker, Component line, List<ServerPlayer> listeners) {
+        // 聊天与气泡各自受开关控制。
+        // 聊天走 26.2 的系统消息入口，与 1.20.1 的 displayClientMessage(…, false) 是同一条路径。
         if (settings.chat()) {
             Component message = TauntTexts.chat(speaker.getName(), line);
             for (ServerPlayer listener : listeners) {

@@ -40,6 +40,7 @@ git diff --check
 | `cooldownSilencesRepeatedHitsForSixSeconds` | 说过一句后立刻再打不说；120 tick 后再打又说，且与上一句不同 |
 | `lethalHitStaysSilent` | 致死一击后村民死亡，附近玩家没有收到聊天 |
 | `tauntCommandSpeaksNowAndCompletes` | `/meridian humanoid taunt <uuid> entity` 用「对生物」台词；玩家执行 `taunt <uuid>` 用「对玩家」台词且台词里是执行者名字；对牛执行失败；`player`、`entity` 可补全；`/meridian humanoid` 下权限 2 能补全到 `taunt`、权限 0 看不到；旧根 `/meridian_humanoid_taunts` 不存在 |
+| `crisisSpeechIsRelayedAsGrayChat` | Threatening 发 `HumanoidSpeech.SPOKE`（村民对 17 格外的玩家说一句翻译文本）：3 格处的旁观者和对着说的那名玩家各收到一条浅灰色聊天，说话者是村民、台词原样；另一侧 17 格外的玩家收不到；随后打村民照常说垃圾话（招敌那句不记冷却） |
 
 ## Xvfb 客户端测试（`fabric/src/clientTest`）
 
@@ -54,6 +55,18 @@ git diff --check
   这样村民轻微移动、天空漂移都不算。它们的外接框上沿两角不能是底色（圆角），
   外接框最下一行（尾巴尖）宽度不超过气泡宽度的 1/4，中心与气泡中心相差不超过气泡宽度的 1/20。
   外接框与尾巴尖写到 `probe.txt`。
+- 接着是招敌截图（`CrisisOmenShots`，用的是 Threatening 招敌的调试指令，只截图、核对文字，不比较像素）：
+  - 先把时间定成正午，清掉玩家和村民以外的实体（世界时刻随上一局走，夜里截图看不清，来人会和野怪混在一起）。
+  - `meridian humanoid crisis omen <玩家>` 先排上一场，再让同一个村民说第一句传言。聊天应整行浅灰色，正好是
+    「<村民> 」加上 `crisis.meridian_humanoid.covetous.omen.rumor.1` 的译文。截图 `crisis-rumor.png`。
+  - 在玩家正前方 2 格放一张床，设成重生点，再给征兆，直到字条落在床上。然后打开只画悬停说明、不压暗画面的界面：
+    说明第一行是「字条」那个键的译文，下面三行都没有残留翻译键。
+    掉落物一直在转，等纸面转到正对镜头（最多 7 秒）再截图 `crisis-note.png`。
+  - 玩家切生存模式（原版的怪不追创造模式的玩家）、给抗性 V，用 `strike <玩家>` 叫来人。客户端按「索卷客」那个键的译文
+    认出头目，转头看着它；它走进 12 格内（或者等满 20 秒）时关掉 HUD（免得聊天挡住来人），一秒后截图 `crisis-raiders.png`。
+    再打开 HUD，头目要是走进准星，再截一张头顶带名号的 `crisis-leader.png`；
+    它一直不近身也不算失败。
+  - 客户端看到的这几段文字都写在 `crisis.txt`。
 
 ## 最近一次结果（2026-10-30）
 

@@ -1,12 +1,18 @@
 # 整合接口
 
-本模组只使用 Framework、Threatening 与 Damage 已有的公开入口，不改这些仓库，也不复制它们的代码。
+本模组只使用 Framework、Threatening 与 Damage 公开的入口，不改这些仓库，也不复制它们的代码。
 
 ## Threatening 物种
 
 `HumanoidSpecies.fromEntityId(String)`：说话者的实体 ID 必须被 Threatening 认领为类人身体宿主（七个内置物种，
 或其他附属经数据驱动注册点登记的物种），并且当前台词表里有这个 ID，才会开口。
 登记了物种但台词表里没有的实体（例如训练假人）不说话；台词表里有但 Threatening 没认领的实体也不说话。
+
+## Threatening 招敌说话事件
+
+`HumanoidSpeech.SPOKE`：Threatening 的修为招敌里生人对玩家说一句写好的话——村民的传言、记仇的人带队回来认出玩家。
+参数是说话的生人、对着说的玩家和那一句的翻译文本；文字在 Threatening 的语言文件里，本模组不抽台词、不看也不记冷却，
+照受击垃圾话的路子发浅灰色聊天和头顶气泡：16 格内的玩家都收到，对着说的那名玩家不在 16 格内也收到。
 
 ## Damage 观察事件
 

@@ -21,13 +21,14 @@ dependencies {
     implementation libs.tomlj
     include libs.tomlj
     include libs.antlr.runtime
-    // 物种来自 Threatening，受击事实来自 Damage 观察事件，调试指令挂在 Framework 的 /meridian 注册点；
+    // 物种和招敌说话的事件来自 Threatening，受击事实来自 Damage 观察事件，调试指令挂在 Framework 的 /meridian 注册点；
     // 三者都是必装模组，运行时由完整装配提供。相邻仓库在 settings 中以源码组合，与原先读单个 JAR 一致只取各模块本身。
     compileOnly('dev.kizuna.meridian.vanilla:fabric') { transitive = false }
     compileOnly('dev.kizuna.meridian:fabric') { transitive = false }
     compileOnly('dev.kizuna.meridian.vanilla:server') { transitive = false }
     compileOnly('local.meridian:server') { transitive = false }
     compileOnly('dev.kizuna.meridian.humanoid:server') { transitive = false }
+    compileOnly('dev.kizuna.meridian.humanoid:fabric') { transitive = false }
     compileOnly libs.protobuf.java
     testImplementation libs.junit4
 }

@@ -41,10 +41,11 @@ import java.util.stream.Stream;
  * 4 秒后再截一张，画面中上部的像素差证明气泡确实画出、仍在且按时消失，变化区域的轮廓证明它是圆角加尾巴的气泡。
  * 最后用真实字体检查整张台词表的折行（标点不落行首、开引号不留行尾、名字不拆开），
  * 再经正式气泡通道给同一村民依次换上两句原版会折错的台词，各截一张图。
+ * 最后接 {@link CrisisOmenShots}：经 Threatening 招敌的调试指令让同一村民说传言、在床上留字条、叫来一伙人，各截图。
  */
 public final class TauntBubbleClientTest implements ClientModInitializer {
     private static final int READY_TICKS = 60;
-    private static final int TIMEOUT_TICKS = 600;
+    private static final int TIMEOUT_TICKS = 2400;
     private static final int SETTLE_TICKS = 20;
     private static final double SPEAKER_DISTANCE = 5.0;
     private static final float HALF_TURN = 180.0F;
@@ -100,8 +101,9 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
     private NativeImage visibleImage;
     private NativeImage lateImage;
     private NativeImage hiddenImage;
+    private CrisisOmenShots crisis;
 
-    private enum Stage { WAITING, STRIKING, SETTLING, SHOWN, LATE, WRAPPING, CAPTURING, DONE }
+    private enum Stage { WAITING, STRIKING, SETTLING, SHOWN, LATE, WRAPPING, CAPTURING, CRISIS, DONE }
 
     @Override
     public void onInitializeClient() {
@@ -117,7 +119,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
             return;
         }
         if (ticks > TIMEOUT_TICKS) {
-            finish("超时，停在 " + stage);
+            finish("超时，停在 " + where());
             return;
         }
         // 26.2 的加载遮罩与提示框挂在 client.gui 上。
@@ -137,6 +139,7 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
                 case SHOWN -> awaitLate(client);
                 case LATE -> awaitGone(client);
                 case WRAPPING -> awaitWrapped(client);
+                case CRISIS -> crisis.tick(client);
                 default -> throw new IllegalStateException(stage.name());
             }
         } catch (Exception failure) {
@@ -297,7 +300,16 @@ public final class TauntBubbleClientTest implements ClientModInitializer {
             showShot(client);
             return;
         }
-        finish(null);
+        crisis = new CrisisOmenShots(messages, playerName, this::finish);
+        stage = Stage.CRISIS;
+    }
+
+    private String where() {
+        // 超时报告：停在哪一段，走到招敌截图时再带上它停在哪一段。
+        if (crisis == null) {
+            return stage.name();
+        }
+        return stage + "/" + crisis.phase();
     }
 
     private static void requireWrappedLine(String line, Fault expected, Font textRenderer) throws Exception {
