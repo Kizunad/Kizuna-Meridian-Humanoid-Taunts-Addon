@@ -3,7 +3,13 @@
   "id": "meridian_humanoid_taunts",
   "version": "${version}",
   "name": "Kizuna's Meridian Humanoid Taunts",
-  "description": "类人生物受击时对攻击者吐垃圾话：浅灰色聊天与头顶气泡",
+  "contact": {
+    "homepage": "https://github.com/Kizunad/Kizuna-Meridian-Humanoid-Taunts-Addon",
+    "sources": "https://github.com/Kizunad/Kizuna-Meridian-Humanoid-Taunts-Addon",
+    "issues": "https://github.com/Kizunad/Kizuna-Meridian-Humanoid-Taunts-Addon/issues"
+  },
+  "icon": "assets/meridian_humanoid_taunts/icon.png",
+  "description": "Humanoid foes taunt their attacker in chat and in speech bubbles when struck.\n类人生物挨打时会冲攻击者叫骂，话语显示在聊天栏和头顶气泡里。",
   "authors": ["Kizunad"],
   "license": "PolyForm-Noncommercial-1.0.0",
   "environment": "*",

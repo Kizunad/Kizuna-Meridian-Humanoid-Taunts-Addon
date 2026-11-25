@@ -37,7 +37,11 @@ test { useJUnit() }
 
 processResources {
     inputs.property 'version', project.version
-    filesMatching('fabric.mod.json') { expand version: project.version }
+    def preserveJsonEscapes = true
+    inputs.property 'preserveJsonEscapes', preserveJsonEscapes
+    filesMatching('fabric.mod.json') {
+        expand([version: project.version]) { escapeBackslash = preserveJsonEscapes }
+    }
     // 台词数据只在 shared 维护一份，随正式 JAR 根目录发布。
     from(project(':shared').sourceSets.main.resources)
 }
