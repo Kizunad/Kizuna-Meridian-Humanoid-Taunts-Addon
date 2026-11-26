@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
  * 接在气泡截图后面，经 Threatening 招敌的调试指令走一遍征兆和来人，用真客户端截图：
  * 气泡用例里那个村民对玩家说第一句传言（气泡和浅灰色聊天，文字按简体中文从 Threatening 的语言文件解析）；
  * 床上留下的字条和它的悬停说明（名字、三行字）；叫来的一伙人，以及头目走进准星时头顶的名号。
- * 最后清掉这伙人（头目一死这一场就打赢了结），用 omen 指定灭门遗孤的仇家那张队伍表，再拍一张仇家的字条。
+ * 最后清掉这伙人（头目一死这一场就打赢了结），用 omen 指定重生旧簿的仇家那张队伍表，再拍一张仇家的字条。
  * 截图写进 {@code bubble-screens/crisis-*.png}，客户端看到的文字写进 {@code crisis.txt}。
  */
 final class CrisisOmenShots {
@@ -61,11 +61,11 @@ final class CrisisOmenShots {
     private static final double BED_DISTANCE = 2.0;
     private static final double NOTE_RADIUS = 3.0;
     private static final float NOTE_PITCH = 25.0F;
-    // 两张字条：风声招来的贪卷那伙人照常排；灭门遗孤的仇家在 omen 后面指定队伍表排。
+    // 两张字条：风声招来的贪卷那伙人照常排；重生旧簿的仇家在 omen 后面指定队伍表排。
     private static final NoteStep COVETOUS_NOTE = new NoteStep("meridian_humanoid:covetous", "", "note",
             "crisis-note.png", Phase.STRIKE);
-    private static final NoteStep FOE_NOTE = new NoteStep("meridian_humanoid:clan_foes",
-            " meridian_humanoid:clan_foes", "foe_note", "crisis-foe-note.png", Phase.DONE);
+    private static final NoteStep FOE_NOTE = new NoteStep("meridian_humanoid:old_register",
+            " meridian_humanoid:old_register", "foe_note", "crisis-foe-note.png", Phase.DONE);
     private static final double RAIDERS_NEAR = 12.0;
     private static final double RAIDERS_RADIUS = 64.0;
     private static final int RAIDERS_FALLBACK_TICKS = 400;

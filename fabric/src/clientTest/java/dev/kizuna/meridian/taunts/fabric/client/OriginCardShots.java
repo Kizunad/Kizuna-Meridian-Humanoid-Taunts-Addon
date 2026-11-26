@@ -13,17 +13,17 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.locale.Language;
 
 /**
- * 排在气泡截图前面：完整装配里有 Threatening 的首批五个出身，进服时出身附属自己弹出选出身的界面。
- * 先等它弹出来截一张候选总览；再五个出身各用出身附属的调试指令定一次、用 {@code meridian body origin} 打开
+ * 排在气泡截图前面：完整装配里有生人与剧情附属的四个出身，进服时出身附属自己弹出选出身的界面。
+ * 先等它弹出来截一张候选总览；再对四个出身各用出身附属的调试指令定一次、用 {@code meridian body origin} 打开
  * 选定后只读的那一张，各截一张；最后合上界面，交回气泡用例。截图写进 {@code bubble-screens/origin-*.png}，
  * 每张对应的出身名字写进 {@code origins.txt}。
  */
 final class OriginCardShots {
     // 界面类在出身附属里，Taunts 不编译依赖它，按类名认。
     private static final String SCREEN_CLASS = "dev.kizuna.meridian.origin.fabric.client.OriginScreen";
-    private static final String NAMESPACE = "meridian_humanoid";
-    // 最后定成寻常农户：没有仇家，后面风声招来的那一场不受出身的仇家打扰。
-    private static final List<String> ORIGINS = List.of("orphan", "apprentice", "disgraced", "merchant", "farmer");
+    // 最后定成平常出身：没有仇家，后面风声招来的那一场不受出身的仇家打扰。
+    private static final List<String> ORIGINS = List.of("meridian_humanoid:reborn",
+            "meridian_story:grave_keeper", "meridian_story:lone_star", "meridian_story:ordinary");
     private static final int SETTLE_TICKS = 20;
     private static final int OFFER_TICKS = 600;
     private static final int OPEN_TICKS = 200;
@@ -95,7 +95,7 @@ final class OriginCardShots {
         if (command == null) {
             client.gui.setScreen(null);
             command = CrisisOmenShots.run(client,
-                    "meridian debug origin set " + playerName + " " + NAMESPACE + ":" + ORIGINS.get(index));
+                    "meridian debug origin set " + playerName + " " + ORIGINS.get(index));
             return;
         }
         if (!command.isDone()) {
@@ -124,8 +124,8 @@ final class OriginCardShots {
             return;
         }
         String origin = ORIGINS.get(index);
-        String shot = "origin-" + origin + ".png";
-        note(shot + "=" + Language.getInstance().getOrDefault("origin." + NAMESPACE + "." + origin + ".name"));
+        String shot = "origin-" + origin.substring(origin.indexOf(':') + 1) + ".png";
+        note(shot + "=" + Language.getInstance().getOrDefault("origin." + origin.replace(':', '.') + ".name"));
         index++;
         capture(client, shot, index < ORIGINS.size() ? Phase.CHOOSE : Phase.CLOSING);
     }
