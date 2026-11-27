@@ -16,6 +16,9 @@
 
 ## Damage 观察事件
 
+实体带有字符串标签 `meridian.no_taunt` 时，受击会跳过随机台词、聊天、气泡与发言冷却。
+生人附属给剧情访客加上此标签。招敌事件指定的对白仍通过 `HumanoidSpeech.SPOKE` 发送。
+
 `VanillaDamageFabric.registerDamageObserver` 在身体事务提交后通知只读事实。本模组用到其中三项：
 
 - `target()`：受击者，即说话者；

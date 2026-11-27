@@ -76,6 +76,11 @@ sourceSets {
     }
 }
 
+dependencies {
+    gametestImplementation files(kizunaWorkspace.artifact('technique', 'fabric', false).path
+            .replace('.jar', '-test-fixtures.jar'))
+}
+
 loom {
     mods {
         meridian_humanoid_taunts_test { sourceSet sourceSets.gametest }

@@ -9,6 +9,8 @@ import dev.kizuna.meridian.taunts.server.Audience;
 import dev.kizuna.meridian.taunts.server.SpeciesTaunts;
 import dev.kizuna.meridian.taunts.server.TauntCatalog;
 import dev.kizuna.meridian.taunts.server.TauntLine;
+import dev.kizuna.meridian.technique.fabric.testing.RecordingConnection;
+import dev.kizuna.meridian.technique.fabric.testing.TestPlayers;
 import net.fabricmc.fabric.api.entity.FakePlayer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.ChatFormatting;
@@ -18,7 +20,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.network.chat.contents.PlainTextContents;
 import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.server.permissions.PermissionSet;
 import net.minecraft.world.entity.Entity;
@@ -60,6 +66,40 @@ public final class TauntGameTest {
     private static final String TAUNT = "meridian humanoid " + TauntCommands.NODE + " ";
     private static final String CRISIS_LINE = "crisis.meridian_humanoid.covetous.omen.rumor.1";
     private static final TauntCatalog CATALOG = TauntCatalog.parse(TauntsFabric.catalogText(LANGUAGE));
+
+    @GameTest(maxTicks = DEFAULT_TIMEOUT, environment = "meridian_humanoid_taunts_test:taunts_tag")
+    public void taggedVillagerSkipsOnlyItsHurtBubble(GameTestHelper context) {
+        var level = context.getLevel();
+        var profile = new GameProfile(UUID.randomUUID(), "BubbleWitness");
+        var witness = new ServerPlayer(level.getServer(), level, profile, ClientInformation.createDefault());
+        var channels = List.of("meridian:body_view", "meridian:gathering_response", "meridian:opening_response",
+                "meridian_human:control", "meridian_progression:event", "kizuna_players_animation:play",
+                "kizuna_players_animation:stop", "meridian_origin:offer", "meridian_humanoid_taunts:bubble");
+        var connection = new RecordingConnection(channels.stream().map(Identifier::parse).toList());
+        TestPlayers.logIn(witness, connection);
+        try {
+            var villager = humanoid(context, EntityTypes.VILLAGER);
+            witness.snapTo(villager.position());
+            var source = villager.damageSources().playerAttack(witness);
+            villager.addTag("meridian.no_taunt");
+            context.assertTrue(villager.hurtServer(level, source, LIGHT_HIT), "带标签的村民未实际受击");
+            context.assertTrue(bubbles(connection, villager) == 0, "带标签的村民受击仍发出气泡");
+            villager.removeTag("meridian.no_taunt");
+            villager.invulnerableTime = 0;
+            context.assertTrue(villager.hurtServer(level, source, LIGHT_HIT), "摘掉标签后未实际受击");
+            context.assertTrue(bubbles(connection, villager) == 1, "摘掉标签后应立即发出一个气泡");
+        } finally {
+            connection.disconnectFromClient();
+        }
+        context.succeed();
+    }
+
+    private static long bubbles(RecordingConnection connection, LivingEntity speaker) {
+        return connection.packets().stream()
+                .filter(packet -> packet instanceof ClientboundCustomPayloadPacket custom
+                        && custom.payload() instanceof BubblePayload bubble && bubble.entityId() == speaker.getId())
+                .count();
+    }
 
     @GameTest(maxTicks = DEFAULT_TIMEOUT, environment = "meridian_humanoid_taunts_test:taunts_player")
     public void playerAttackerHearsOwnName(GameTestHelper context) {

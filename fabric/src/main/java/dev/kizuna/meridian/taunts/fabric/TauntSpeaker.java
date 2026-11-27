@@ -42,6 +42,9 @@ final class TauntSpeaker {
 
     void onDamage(VanillaDamageFabric.DamageEvent event) {
         LivingEntity speaker = event.target();
+        if (speaker.entityTags().contains("meridian.no_taunt")) {
+            return;
+        }
         LivingEntity attacker = event.attacker();
         if (attacker == null || attacker == speaker || event.result().body().getVitality().getDead()) {
             return;
